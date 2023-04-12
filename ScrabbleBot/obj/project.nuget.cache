@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "66Yigjt4WKAEJDj83YQ7cX6Wleq6lilVTiiEubT6BuKPt6fH5TAw34DP0l4d6AqbtDt43xsxm8fr29OsAbYc2g==",
+  "success": true,
+  "projectFilePath": "/Users/lucasfreytorreshanson/Desktop/code/fupro-scrabble-project/ScrabbleBot/ScrabbleBot.fsproj",
+  "expectedPackageFiles": [
+    "/Users/lucasfreytorreshanson/.nuget/packages/fparsec/1.1.1/fparsec.1.1.1.nupkg.sha512",
+    "/Users/lucasfreytorreshanson/.nuget/packages/fsharp.core/7.0.200/fsharp.core.7.0.200.nupkg.sha512"
+  ],
+  "logs": []
+}
