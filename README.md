@@ -4,7 +4,7 @@ This repository is created as part of the course Functional Programming, which w
 
 ## Made by
 
-Group: QWERTY Quitters
+Group: QWERTY Quitters <br>
 Group members: Felix Fatum (fefa), Andreas Guldborg (aguh), and Lucas Hanson (luha)
 
 ## How to run
