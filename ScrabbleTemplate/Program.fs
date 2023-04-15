@@ -49,7 +49,7 @@ let main argv =
         None
 
     // Uncomment this line to call your client
-    // let players    = [("Your name here", YourClientName.Scrabble.startGame)]
+    // let players    = [("QWERTY_Quitters", YourClientName.Scrabble.startGame)]
     let (dictionary, time) =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
