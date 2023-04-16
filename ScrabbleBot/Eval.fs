@@ -3,9 +3,85 @@
 module internal Eval
 
     open StateMonad
+    open System
 
-    let add a b = failwith "Not implemented"      
-    let div a b = failwith "Not implemented"      
+    let add a b = 
+        a >>= fun x ->
+        b >>= fun y ->
+        ret (x+y)
+    
+    let sub a b = 
+        a >>= fun x -> 
+        b >>= fun y -> 
+        ret (x-y)
+    
+    let mul a b = 
+        a >>= fun x -> 
+        b >>= fun y -> 
+        ret (x*y)
+    
+    let modd a b = 
+        a >>= fun x -> 
+        b >>= fun y -> 
+        if y <> 0 then
+            ret (x%y)
+                else
+        fail DivisionByZero
+
+    let div a b = 
+            a >>= fun x ->
+             b >>= fun y ->
+            if y <> 0 then
+                 ret (x/y)
+                    else
+            fail DivisionByZero   
+    
+    let aeq a b = 
+        a >>= fun x ->
+        b >>= fun y ->
+        ret (( = ) x y)
+    
+    let alt a b = 
+        a >>= fun x ->
+        b >>= fun y ->
+        ret (( < ) x y)
+
+    let conj a b = 
+        a >>= fun x ->
+        b >>= fun y ->
+        ret (( && ) x y)
+    
+    let isdigit c = 
+        c >>= fun x -> 
+        ret (Char.IsDigit x)
+    
+    let isletter c = 
+        c >>= fun x -> 
+        ret (Char.IsLetter x)
+    
+    let not c = 
+        c >>= fun x -> 
+        ret (not x)
+    
+    let isvowel c = 
+        c >>= fun (x: char) -> 
+        ret ("aeiouæøåAEIOUÆØÅ".Contains x)
+    
+    let toupper c = 
+        c >>= fun x -> 
+        ret (Char.ToUpper x)
+    
+    let tolower c = 
+        c >>= fun x -> 
+        ret (Char.ToLower x)
+    
+    let cv c = 
+        c >>= fun x -> 
+        characterValue x
+    
+    let inttochar c = 
+        c >>= fun x -> 
+        ret (char (x + int '0'))  
 
     type aExp =
         | N of int
@@ -37,7 +113,8 @@ module internal Eval
        | Conj of bExp * bExp  (* boolean conjunction *)
 
        | IsVowel of cExp      (* check for vowel *)
-       | IsConsonant of cExp  (* check for constant *)
+       | IsLetter of cExp     (* check for letter *)
+       | IsDigit of cExp      (* check for digit *)
 
     let (.+.) a b = Add (a, b)
     let (.-.) a b = Sub (a, b)
@@ -47,21 +124,51 @@ module internal Eval
 
     let (~~) b = Not b
     let (.&&.) b1 b2 = Conj (b1, b2)
-    let (.||.) b1 b2 = ~~(~~b1 .&&. ~~b2)       (* boolean disjunction *)
-    let (.->.) b1 b2 = (~~b1) .||. b2           (* boolean implication *) 
+    let (.||.) b1 b2 = ~~(~~b1 .&&. ~~b2)
+    let (.->.) b1 b2 = (~~b1) .||. b2
        
     let (.=.) a b = AEq (a, b)   
     let (.<.) a b = ALt (a, b)   
     let (.<>.) a b = ~~(a .=. b)
     let (.<=.) a b = a .<. b .||. ~~(a .<>. b)
-    let (.>=.) a b = ~~(a .<. b)                (* numeric greater than or equal to *)
-    let (.>.) a b = ~~(a .=. b) .&&. (a .>=. b) (* numeric greater than *)    
+    let (.>=.) a b = ~~(a .<. b)
+    let (.>.) a b = ~~(a .=. b) .&&. (a .>=. b)
 
-    let arithEval a : SM<int> = failwith "Not implemented"      
+    let rec arithEval a : SM<int> = 
+        match a with  
+        | N n -> ret n 
+        | V v -> lookup v
+        | WL -> wordLength
+        | PV a -> arithEval a >>= (fun r -> pointValue r)
+        | Add (a, b) -> add (arithEval a) (arithEval b)
+        | Sub (a, b) -> sub (arithEval a) (arithEval b)
+        | Mul (a, b) -> mul (arithEval a) (arithEval b)
+        | Mod (a, b) -> modd (arithEval a) (arithEval b)
+        | Div (a, b) -> div (arithEval a) (arithEval b)
+        | CharToInt c -> charEval c >>= (fun r -> ret (int r))      
 
-    let charEval c : SM<char> = failwith "Not implemented"      
+    and charEval ch : SM<char> = 
+        match ch with
+        | C(ch) -> ret ch
+        | ToUpper(ch) -> toupper (charEval ch)
+        | ToLower(ch) -> tolower (charEval ch) 
+        | CV(ch) -> cv (arithEval ch)
+        | IntToChar ch -> inttochar (arithEval ch)   
 
-    let boolEval b : SM<bool> = failwith "Not implemented"
+    let rec boolEval b : SM<bool> = 
+        match b with
+        | TT -> ret true
+        | FF -> ret false
+
+        | AEq(a, b) -> aeq (arithEval a) (arithEval b)
+        | ALt(a, b) ->  alt (arithEval a) (arithEval b)
+
+        | Not(b1) -> not (boolEval b1)
+        | Conj(a, b) -> conj (boolEval a) (boolEval b)
+
+        | IsDigit(c) -> isdigit (charEval c)
+        | IsLetter(c) -> isletter (charEval c)
+        | IsVowel(c) -> isvowel (charEval c)
 
 
     type stm =                (* statements *)

@@ -11,7 +11,6 @@ open Eval
 open FParsecLight.TextParser // Industrial parser-combinator library. Use for Scrabble Project.
 open ScrabbleUtil
 
-
 let pIntToChar = pstring "intToChar"
 let pPointValue = pstring "pointValue"
 
@@ -31,7 +30,7 @@ let pthen = pstring "then"
 let pelse = pstring "else"
 let pwhile = pstring "while"
 let pdo = pstring "do"
-let pdeclare = pstring "not implemented"
+let pdeclare  = pstring "declare"
 
 let whitespaceChar = satisfy System.Char.IsWhiteSpace <?> "whitespace"
 let pletter = satisfy System.Char.IsLetter <?> "letter"
@@ -108,6 +107,14 @@ let stmntParse = pstring "not implemented"
 
 let parseSquareProg _ = failwith "not implemented"
 
-let parseBoardProg _ = failwith "not implemented"
+let parseBoardProg = 
+        run stmntParse >> getSuccess >> stmntToBoardFun
 
-let mkBoard (bp: boardProg) : board = failwith "not implemented"
+let mkBoard (bp : boardProg) =
+        {
+            center = bp.center;
+            defaultSquare = Map.find bp.usedSquare bp.squares |> parseSquareProg
+            squares = 
+                let m' = Map.map (fun _ m -> parseSquareProg m) bp.squares
+                parseBoardProg bp.prog m'
+        }
