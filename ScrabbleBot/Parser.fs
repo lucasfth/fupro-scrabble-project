@@ -30,7 +30,7 @@ let pthen = pstring "then"
 let pelse = pstring "else"
 let pwhile = pstring "while"
 let pdo = pstring "do"
-let pdeclare  = pstring "declare"
+let pdeclare = pstring "declare"
 
 let whitespaceChar = satisfy System.Char.IsWhiteSpace <?> "whitespace"
 let pletter = satisfy System.Char.IsLetter <?> "letter"
@@ -107,14 +107,22 @@ let stmntParse = pstring "not implemented"
 
 let parseSquareProg _ = failwith "not implemented"
 
-let parseBoardProg = 
-        run stmntParse >> getSuccess >> stmntToBoardFun
+let parseBoardProg = run stmntParse >> getSuccess >> stmntToBoardFun
 
-let mkBoard (bp : boardProg) =
-        {
-            center = bp.center;
-            defaultSquare = Map.find bp.usedSquare bp.squares |> parseSquareProg
-            squares = 
-                let m' = Map.map (fun _ m -> parseSquareProg m) bp.squares
-                parseBoardProg bp.prog m'
-        }
+type word = Eval.word
+type squareFun = Eval.squareFun
+type square = Map<int, squareFun>
+type boardFun2 = coord -> Result<square option, Error>
+
+type board =
+    { center: coord
+      defaultSquare: square
+      squares: boardFun2 }
+
+let mkBoard =
+    fun (bp: boardProg) ->
+        { center = bp.center
+          defaultSquare = Map.find bp.usedSquare bp.squares |> parseSquareProg
+          squares =
+            let m' = Map.map (fun _ m -> parseSquareProg m) bp.squares
+            parseBoardProg bp.prog m' }
