@@ -77,6 +77,30 @@
               | Some v -> Success (v, s)
               | None   -> Failure (VarNotFound x))
 
-    let declare (var : string) : SM<unit> = failwith "Not implemented"   
-    let update (var : string) (value : int) : SM<unit> = failwith "Not implemented"      
+    let declare (s : string) : SM<unit> = 
+        S (fun f -> 
+            match s with
+            | n when f.reserved.Contains s -> Failure (ReservedName s)
+            | n when f.vars.Head.ContainsKey s -> Failure (VarExists s)
+            | n when f.reserved.IsEmpty -> Failure (VarNotFound s)
+            | n -> Success ((), {f with vars = f.vars.Head.Add(s, 0) :: f.vars.Tail}))
+
+    let update (var : string) (value : int) : SM<unit> =
+        let rec aux stack =
+            match stack with
+            | []      -> None
+            | m :: ms when Map.containsKey var m -> Some ((Map.add var value m) :: ms) // return acc :: Map.change :: ms
+            | m :: ms -> 
+                let temp = aux ms
+                match temp with
+                | Some v -> Some (m :: v)
+                | None   -> None
+
+        S (fun s ->
+            let temp = aux s.vars
+            match temp with
+              | Some v -> Success ((), {vars = temp.Value
+                                        word = s.word
+                                        reserved = s.reserved } )
+              | None   -> Failure (VarNotFound var))
               
