@@ -1,4 +1,4 @@
-﻿namespace YourClientName
+﻿namespace QWERTY_Quitters
 
 module Scrabble =
 

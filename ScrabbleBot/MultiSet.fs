@@ -47,3 +47,34 @@ let toList (MS s as ms) =
         | _ -> toList' elm (n - 1u) (elm :: acc)
 
     foldBack toList' ms List.Empty
+
+let map (f: 'a -> 'b) mst =
+    fold (fun acc a cnt -> add (f a) cnt acc) empty mst
+
+let union s1 s2 =
+    fold
+        (fun unionset newElement cnt ->
+            if cnt > (numItems newElement s1) then
+                add newElement cnt unionset
+            else
+                unionset)
+        s1
+        s2
+
+let sum s1 s2 =
+    fold (fun sumset newElement cnt -> add newElement cnt sumset) s1 s2
+
+let subtract s1 s2 =
+    fold (fun subtractset subelement cnt -> remove subelement cnt subtractset) s1 s2
+
+let intersection s1 s2 =
+    fold
+        (fun intersectset newElement s2cnt ->
+            let s1cnt = numItems newElement s1
+
+            if s2cnt < s1cnt then
+                add newElement s2cnt intersectset
+            else
+                add newElement s1cnt intersectset)
+        empty
+        s2

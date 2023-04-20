@@ -34,6 +34,7 @@
     <Reference Include="ScrabbleUtil, Culture=neutral, PublicKeyToken=null">
       <HintPath>..\dlls\ScrabbleUtil.dll</HintPath>
     </Reference>
+
   </ItemGroup>
 
 </Project>
