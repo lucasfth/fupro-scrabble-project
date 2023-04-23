@@ -119,10 +119,11 @@ type board =
       defaultSquare: square
       squares: boardFun2 }
 
-let mkBoard (bp: boardProg) : board = failwith "not implemented"
-// fun (bp: boardProg) ->
-//     { center = bp.center
-//       defaultSquare = Map.find bp.usedSquare bp.squares |> parseSquareProg
-//       squares =
-//         let m' = Map.map (fun _ m -> parseSquareProg m) bp.squares
-//         parseBoardProg bp.prog m' }
+let mkBoard (bp: boardProg) =
+    {
+        center = bp.center
+        defaultSquare = Map.find bp.usedSquare bp.squares |> parseSquareProg
+        squares =
+         let m' = Map.map (fun _ m -> parseSquareProg m) bp.squares
+         parseBoardProg bp.prog m'
+    }
