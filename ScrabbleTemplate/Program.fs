@@ -49,13 +49,13 @@ let main argv =
         None
 
     // Uncomment this line to call your client
-    // let players = [ ("QWERTY_Quitters", QWERTY_Quitters.Scrabble.startGame )]
 
     let (dictionary, time) =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
-    let players =
-        spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
+    let players = [ ("QWERTY_Quitters", dictionary, QWERTY_Quitters.Scrabble.startGame ); ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)]
+    //let players =
+    //    spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
 
     (* 
     let players =

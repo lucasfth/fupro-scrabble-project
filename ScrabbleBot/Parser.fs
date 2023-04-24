@@ -11,6 +11,16 @@ open Eval
 open FParsecLight.TextParser // Industrial parser-combinator library. Use for Scrabble Project.
 open ScrabbleUtil
 
+type word = Eval.word
+type squareFun = Eval.squareFun
+type square = Map<int, squareFun>
+type boardFun2 = coord -> Result<square option, Error>
+type board =
+    { center: coord
+      defaultSquare: square
+      squares: boardFun2 }
+
+
 let pIntToChar = pstring "intToChar"
 let pPointValue = pstring "pointValue"
 
@@ -105,19 +115,24 @@ let BexpParse = pstring "not implemented"
 
 let stmntParse = pstring "not implemented"
 
-let parseSquareProg sqp = failwith "not implemented"
+
+// Probably wrong implementation but this is not used until we implement the correct (non-necessary) mkBoard
+let parseSquareProg (sqp : squareProg) : square = 
+    sqp |> Map.map (
+        fun a b -> (run stmntParse >> getSuccess >> stmntToSquareFun) b
+        )
 
 let parseBoardProg = run stmntParse >> getSuccess >> stmntToBoardFun
 
-type word = Eval.word
-type squareFun = Eval.squareFun
-type square = Map<int, squareFun>
-type boardFun2 = coord -> Result<square option, Error>
 
-type board =
-    { center: coord
-      defaultSquare: square
-      squares: boardFun2 }
+// makes a standard shitty board
+let mkBoard (bp : boardProg) : board =
+    {
+        center = (0, 0);
+        defaultSquare = Map.empty;
+        squares = fun _ -> Success (Some Map.empty);
+    }
+(*
 
 let mkBoard (bp: boardProg) =
     {
@@ -127,3 +142,4 @@ let mkBoard (bp: boardProg) =
          let m' = Map.map (fun _ m -> parseSquareProg m) bp.squares
          parseBoardProg bp.prog m'
     }
+*)
