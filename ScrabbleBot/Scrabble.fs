@@ -48,6 +48,7 @@ module State =
           dict: ScrabbleUtil.Dictionary.Dict
           playerNumber: uint32
           hand: MultiSet.MultiSet<uint32> 
+          lastPlay: MultiSet.MultiSet<uint32> 
           myTurn: bool
           numberOfPlayers: uint32 }
 
@@ -56,6 +57,7 @@ module State =
           dict = d
           playerNumber = pn
           hand = h
+          lastPlay = MultiSet.empty
           myTurn = true 
           numberOfPlayers = n }
 
@@ -66,6 +68,7 @@ module State =
 
 module Scrabble =
     open System.Threading
+    open MultiSet
 
     let playGame cstream pieces (st: State.state) =
 
@@ -78,6 +81,7 @@ module Scrabble =
                 forcePrint
                     "Input move (format '(<x-coordinate> <y-coordinate> <piece id><character><point-value> )*', note the absence of space between the last inputs)\n\n"
 
+                // TODO implement some logic that figures out the next play
                 let input = System.Console.ReadLine()
                 let move = RegEx.parseMove input
 
@@ -94,11 +98,19 @@ module Scrabble =
             match msg with
             | RCM(CMPlaySuccess(ms, points, newPieces)) ->
                 (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
+                
+                // Hand:
+                // Remove the last played pieces from current hand state
+                let handWithoutUsedPieces = MultiSet.subtract st.hand st.lastPlay
+                // Add new pieces to the hand state
+                let newHand = List.fold (fun acc (x, k) -> MultiSet.add x k acc) handWithoutUsedPieces newPieces
+                
                 let st': State.state = {
                     playerNumber = st.playerNumber
                     board = st.board
                     dict = st.dict
-                    hand = st.hand
+                    hand = newHand
+                    lastPlay = st.hand
                     myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
                     numberOfPlayers = st.numberOfPlayers
                 } // This state needs to be updated
@@ -110,6 +122,7 @@ module Scrabble =
                     board = st.board
                     dict = st.dict
                     hand = st.hand
+                    lastPlay = MultiSet.empty // Should not matter to keep their last play right now
                     myTurn = if ((pid+1u) % st.numberOfPlayers = st.playerNumber) then true else false
                     numberOfPlayers = st.numberOfPlayers
                 }

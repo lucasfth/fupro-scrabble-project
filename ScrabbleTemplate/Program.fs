@@ -1,4 +1,5 @@
-﻿// Learn more about F# at http://fsharp.org
+﻿open ScrabbleUtil
+// Learn more about F# at http://fsharp.org
 
 let time f =
     let start = System.DateTime.Now
@@ -45,8 +46,9 @@ let main argv =
 
     let dictAPI =
         // Uncomment if you have implemented a dictionary. last element None if you have not implemented a GADDAG
-        // Some (Dictionary.empty, Dictionary.insert, Dictionary.step, Some Dictionary.reverse)
-        None
+        Some (fun () -> (), fun () -> (), Dictionary.step, Some Dictionary.reverse)
+        // Some (Dictionary.step, Some Dictionary.reverse)
+        // None
 
     // Uncomment this line to call your client
 
@@ -54,9 +56,9 @@ let main argv =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
     let players = [ ("QWERTY_Quitters", dictionary, QWERTY_Quitters.Scrabble.startGame ); ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)]
-    //let players =
+    // let players =
     //    spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
-
+    
     (* 
     let players =
         spawnMultiples "OxyphenButazone" dictionary Oxyphenbutazone.Scrabble.startGame 2
