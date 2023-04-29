@@ -24,11 +24,11 @@ let insert (root : Trie) (word : string) =
                     
                     Data (isWord, Map.add fstChar (aux child remaining) nodeList)
                     // Call aux on subnode
-            | [] -> Data (true, Map.empty) // Set to true and create a leaf
+            | [] -> Data (true, nodeList) // Set to true and create a leaf
 
     aux root (Seq.toList word)
 
-insert empty "Hello"
+insert empty "Hell" |> insert <| "Hello" |> insert <| "Mama"
 
 
 
@@ -38,7 +38,7 @@ insert empty "Hello"
 // https://codereview.stackexchange.com/questions/146150/functional-immutable-trie-prefix-tree 
 
 // dictAPI:
-// empty: () -> Trie
-// insert: string -> Trie -> Trie
+// empty: () -> Trie (check)
+// insert: string -> Trie -> Trie (check)
 // step: char -> Dict -> (bool * Dict) option (bool=true if word exist and then a dictionary for the next level)
 // reverse: GADDAG only
