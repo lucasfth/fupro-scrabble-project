@@ -28,10 +28,13 @@ let insert (root : Trie) (word : string) =
 
     aux root (Seq.toList word)
 
-insert empty "Hell" |> insert <| "Hello" |> insert <| "Mama"
-
-
-
+let step c d : (bool * Trie) =
+    match d with
+    | Data (isWord, nodes) -> 
+        let trie = Map.tryFind c nodes
+        match trie with
+        | Some (Data (d, a)) -> (d, Data (d, a))
+        | None -> (false, empty)
 
 // Nyt link
 // https://github.com/mrandri19/trie-fsharp/blob/master/simpleTrie/trie.fsx 
