@@ -1,4 +1,5 @@
 ﻿open ScrabbleUtil
+
 // Learn more about F# at http://fsharp.org
 
 let time f =
@@ -46,7 +47,8 @@ let main argv =
 
     let dictAPI =
         // Uncomment if you have implemented a dictionary. last element None if you have not implemented a GADDAG
-        Some (fun () -> (), fun () -> (), Dictionary.step, Some Dictionary.reverse)
+        // Some (fun () -> (), fun () -> (), Dictionary.step, Some Dictionary.reverse)
+        Some (Dictionary.empty, Dictionary.insert, Dictionary.step, Some Dictionary.reverse)
         // Some (Dictionary.step, Some Dictionary.reverse)
         // None
 

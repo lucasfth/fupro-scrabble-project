@@ -53,12 +53,9 @@ let reverse d (b, dict) = failwith "Not implemented"
 
 let isGaddag = fun _ -> false
 
-// Nyt link
-// https://github.com/mrandri19/trie-fsharp/blob/master/simpleTrie/trie.fsx 
-// https://codereview.stackexchange.com/questions/146150/functional-immutable-trie-prefix-tree 
+type 'a dictAPI =
+    (unit -> 'a) * // empty
+    (string -> 'a -> 'a) * // insert
+    (char -> 'a -> (bool * 'a) option) * // step
+    ('a -> (bool * 'a) option) option // reverse
 
-// dictAPI:
-// empty: () -> Trie (check)
-// insert: string -> Trie -> Trie (check)
-// step: char -> Dict -> (bool * Dict) option (bool=true if word exist and then a dictionary for the next level)
-// reverse: GADDAG only

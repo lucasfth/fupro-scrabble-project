@@ -69,6 +69,7 @@ module State =
 module Scrabble =
     open System.Threading
     open MultiSet
+    open Trie
 
     let playGame cstream pieces (st: State.state) =
 
@@ -110,7 +111,7 @@ module Scrabble =
                     board = st.board
                     dict = st.dict
                     hand = newHand
-                    lastPlay = st.hand
+                    lastPlay = st.hand // Maybe wrong
                     myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
                     numberOfPlayers = st.numberOfPlayers
                 } // This state needs to be updated

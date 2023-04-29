@@ -34,6 +34,9 @@
     <Reference Include="ScrabbleUtil, Culture=neutral, PublicKeyToken=null">
       <HintPath>..\dlls\ScrabbleUtil.dll</HintPath>
     </Reference>
+    <Reference Include="Trie, Culture=neutral, PublicKeyToken=null">
+      <HintPath>..\ScrabbleBot\Trie.fs</HintPath>
+    </Reference>
 
   </ItemGroup>
 
