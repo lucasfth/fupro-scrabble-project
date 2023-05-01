@@ -1,4 +1,5 @@
 ﻿open ScrabbleUtil
+open Trie
 
 // Learn more about F# at http://fsharp.org
 
@@ -37,7 +38,7 @@ let main argv =
     //    let board      = ScrabbleUtil.HoleBoard.holeBoard ()
     //    let board      = ScrabbleUtil.InfiniteHoleBoard.infiniteHoleBoard ()
 
-    let words = readLines "ScrabbleTemplate/Dictionaries/English.txt"
+    let words = readLines "Dictionaries/English.txt"
 
     let handSize = 7u
     let timeout = None
@@ -47,10 +48,7 @@ let main argv =
 
     let dictAPI =
         // Uncomment if you have implemented a dictionary. last element None if you have not implemented a GADDAG
-        // Some (fun () -> (), fun () -> (), Dictionary.step, Some Dictionary.reverse)
-        Some (Dictionary.empty, Dictionary.insert, Dictionary.step, Some Dictionary.reverse)
-        // Some (Dictionary.step, Some Dictionary.reverse)
-        // None
+        Some (Trie.empty, Trie.insert, Trie.step, None)
 
     // Uncomment this line to call your client
 

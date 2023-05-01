@@ -1,3 +1,4 @@
+namespace Trie
 
 module internal Trie
 

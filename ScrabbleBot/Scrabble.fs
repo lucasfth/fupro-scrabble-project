@@ -38,6 +38,7 @@ module Print =
         |> MultiSet.fold (fun _ x i -> forcePrint (sprintf "%d -> (%A, %d)\n" x (Map.find x pieces) i)) ()
 
 module State =
+    open Trie
     // Make sure to keep your state localised in this module. It makes your life a whole lot easier.
     // Currently, it only keeps track of your hand, your player numer, your board, and your dictionary,
     // but it could, potentially, keep track of other useful
@@ -45,7 +46,7 @@ module State =
 
     type state =
         { board: Parser.board
-          dict: ScrabbleUtil.Dictionary.Dict
+          dict: Dictionary.Dict
           playerNumber: uint32
           hand: MultiSet.MultiSet<uint32> 
           lastPlay: MultiSet.MultiSet<uint32> 
@@ -72,6 +73,10 @@ module Scrabble =
     open Trie
 
     let playGame cstream pieces (st: State.state) =
+        
+        forcePrint (if Dictionary.lookup "HELLO" st.dict then "HELLO Y" else "HELLO N")
+        forcePrint (if Dictionary.lookup "HELL" st.dict then "HELL Y" else "HELL N")
+        
 
         let rec aux (st: State.state) =
             Print.printHand pieces (State.hand st)
@@ -169,7 +174,9 @@ module Scrabble =
         )
 
         //let dict = dictf true // Uncomment if using a gaddag for your dictionary
-        let dict = dictf false // Uncomment if using a trie for your dictionary
+        // let dict = dictf false // Uncomment if using a trie for your dictionary
+        let dict = dictf false
+
         let board = Parser.mkBoard boardP
 
         let handSet = List.fold (fun acc (x, k) -> MultiSet.add x k acc) MultiSet.empty hand
