@@ -84,6 +84,12 @@ module Scrabble =
     open MultiSet
     open Trie
 
+    let decidePlay (words : MultiSet<uint32 list>) folder pieces
+        =
+        // Use folder (function) to determine which word is the best
+        // pieces will be used if the folder starts requiring to know the characters on the tiles
+        MultiSet.foldBack folder words []
+
     let rec findPlay
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
@@ -175,8 +181,17 @@ module Scrabble =
                 // some logic that figures out the next play
                 let nextPlay = findPlay (* st.hand *) debugHand (* pieces *) debugPieces st.dict 'A'
 
-                // Print.printWordOptions pieces nextPlay
+                // folder function that gives longest element of list
+                let folder = (fun element count currentWord -> if (List.length element) > (List.length currentWord) then element else currentWord)
+
+                // call function using folder to determine best play
+                let play = decidePlay nextPlay folder debugPieces
+
                 Print.printWordOptions debugPieces nextPlay
+                
+                forcePrint (sprintf "Word decided: %A" (List.fold (fun st el -> (Map.find el debugPieces) :: st) [] play))
+
+                // Print.printWordOptions pieces nextPlay
 
                 let input = System.Console.ReadLine()
                 let move = RegEx.parseMove input
