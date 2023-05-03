@@ -98,7 +98,7 @@ module Scrabble =
         // We should handle two cases: One where the first letter is pre-determined and one where it is not (if we start the game or not)
         // One way to handle this is to call this method after the step method for the first letter
 
-        let rec aux
+        let rec aux // This returns a MultiSet of options, where an option is a list of uint32 representing tileIDs for a given word
             (currHand: MultiSet<uint32>)
             (currTrie: Dictionary.Dict)
             (currWord: list<uint32>)
@@ -108,25 +108,36 @@ module Scrabble =
             | 0u -> cont // Return continuation if no pieces left in hand
             | _ -> // Equivalent to pieces left in hand
                 MultiSet.fold
-                    (fun _ nextLetter countOfThisLetter ->
+                    (fun subContinuation nextLetter countOfThisLetter ->
                         // For each letter left in our hand:
                         let (nextTile: tile) = Map.find nextLetter pieces
 
                         Set.fold
-                            (fun _ (nextChar, _) ->
+                            (fun subSubContinuation (nextChar, _) ->
 
                                 let subTrieOption = Dictionary.step nextChar currTrie
 
                                 match subTrieOption with
                                 | Some(isWord, subTrie) ->
                                     let currWord = (nextLetter :: currWord)
-                                    let newContinuation = if isWord then MultiSet.addSingle currWord cont else cont
 
-                                    aux (MultiSet.removeSingle nextLetter currHand) subTrie currWord newContinuation
-                                | None -> cont)
-                            MultiSet.empty // This needs to change
+                                    let newContinuation =
+                                        if isWord then
+                                            MultiSet.addSingle currWord subSubContinuation
+                                        else
+                                            subSubContinuation
+
+                                    MultiSet.union
+                                        (aux
+                                            (MultiSet.removeSingle nextLetter currHand)
+                                            subTrie
+                                            currWord
+                                            newContinuation)
+                                        subSubContinuation
+                                | None -> subSubContinuation)
+                            subContinuation // This needs to change
                             nextTile)
-                    MultiSet.empty // This need to change
+                    cont // This need to change
                     currHand
 
 
@@ -151,10 +162,21 @@ module Scrabble =
                 forcePrint
                     "Input move (format '(<x-coordinate> <y-coordinate> <piece id><character><point-value> )*', note the absence of space between the last inputs)\n\n"
 
-                // TODO implement some logic that figures out the next play
-                let nextPlay = findPlay st.hand pieces st.dict 'A'
+                let B: tile = Set.ofList [ ('B', 0) ]
+                let A: tile = Set.ofList [ ('A', 0) ]
+                let M: tile = Set.ofList [ ('M', 0) ]
+                let P: tile = Set.ofList [ ('P', 0) ]
+                // ABAMP
+                let debugPieces: Map<uint32, tile> =
+                    Map.ofList [ (1u, B); (2u, A); (3u, M); (4u, P) ]
 
-                Print.printWordOptions pieces nextPlay
+                let debugHand: MultiSet<uint32> = MultiSet.ofList [ 1u; 2u; 3u; 4u ]
+
+                // some logic that figures out the next play
+                let nextPlay = findPlay (* st.hand *) debugHand (* pieces *) debugPieces st.dict 'A'
+
+                // Print.printWordOptions pieces nextPlay
+                Print.printWordOptions debugPieces nextPlay
 
                 let input = System.Console.ReadLine()
                 let move = RegEx.parseMove input
