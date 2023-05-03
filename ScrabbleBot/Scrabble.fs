@@ -72,11 +72,43 @@ module Scrabble =
     open MultiSet
     open Trie
 
+    let rec findPlay (hand : MultiSet.MultiSet<uint32>) (pieces : Map<uint32, 'a>) (trie : Dictionary.Dict) (initialLetter : MultiSet<uint32>) (continuation : MultiSet<uint32>) =
+        // Use Dictionary.step to go recursively through the trie we have (This uses our implementation of Trie.step)
+        // Hand contains a set of integers which we need to use Map.find on the pieces Map to figure out what letter they represent
+        // Preferably, we find longer words (this makes it easier to complete a game)
+        // To do so, we should step through the Trie and add all results to a list and find the longest word of these and return it
+        // Otherwise use some sort of continuation to find a legal word and then continue and if a longer word is found, use this instead
+        // We should handle two cases: One where the first letter is pre-determined and one where it is not (if we start the game or not)
+        // One way to handle this is to call this method after the step method for the first letter
+        
+
+
+        let rec aux currHand currTrie currword cont =
+            match (MultiSet.size currHand) with
+            | 0u -> cont
+            | n ->
+                let temp =
+                    MultiSet.fold
+                        (fun a b c ->
+                            let k = Dictionary.step b currTrie 
+                            match k with
+                            | Some (l, j) -> 
+                                aux (MultiSet.removeSingle b currHand) j (MultiSet.addSingle b currword)
+                            | None -> a
+                            )
+                        cont currHand 
+                failwith ""
+            // MultiSet.fold (fun set element count -> "") 
+        
+        let possibleWords =
+            aux hand trie initialLetter MultiSet.empty
+            // let folder = fun set element count -> MultiSet.addSingle element set
+            // MultiSet.fold folder initialLetter hand
+            
+
+        failwith "Not implemented yet"
+
     let playGame cstream pieces (st: State.state) =
-        
-        forcePrint (if Dictionary.lookup "HELLO" st.dict then "HELLO Y" else "HELLO N")
-        forcePrint (if Dictionary.lookup "HELL" st.dict then "HELL Y" else "HELL N")
-        
 
         let rec aux (st: State.state) =
             Print.printHand pieces (State.hand st)
@@ -88,6 +120,8 @@ module Scrabble =
                     "Input move (format '(<x-coordinate> <y-coordinate> <piece id><character><point-value> )*', note the absence of space between the last inputs)\n\n"
 
                 // TODO implement some logic that figures out the next play
+                let nextPlay = findPlay st.hand pieces st.dict
+
                 let input = System.Console.ReadLine()
                 let move = RegEx.parseMove input
 
@@ -136,7 +170,15 @@ module Scrabble =
                 aux st'
             | RCM(CMPlayFailed(pid, ms)) ->
                 (* Failed play. Update your state *)
-                let st' = st // This state needs to be updated
+                let st': State.state = {
+                    playerNumber = st.playerNumber
+                    board = st.board
+                    dict = st.dict
+                    hand = st.hand
+                    lastPlay = MultiSet.empty // Should not matter to keep their last play right now
+                    myTurn = if ((pid+1u) % st.numberOfPlayers = st.playerNumber) then true else false
+                    numberOfPlayers = st.numberOfPlayers
+                }
                 aux st'
             | RCM(CMGameOver _) -> ()
             | RCM a -> failwith (sprintf "not implmented: %A" a)

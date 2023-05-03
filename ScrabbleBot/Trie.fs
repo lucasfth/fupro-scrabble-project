@@ -30,8 +30,6 @@ module Trie =
 
         aux (Seq.toList word) root
 
-    let trie = insert "Hello" (empty()) |> insert "Hi" |> insert "Hell"
-
     let step c dict : option<(bool * Dict)> =
         match dict with
         | Data (isWord, nodes) -> 
