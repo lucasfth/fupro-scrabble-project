@@ -38,7 +38,7 @@ let main argv =
     //    let board      = ScrabbleUtil.HoleBoard.holeBoard ()
     //    let board      = ScrabbleUtil.InfiniteHoleBoard.infiniteHoleBoard ()
 
-    let words = readLines "Dictionaries/English.txt"
+    let words = readLines "../../../Dictionaries/English.txt"
 
     let handSize = 7u
     let timeout = None
@@ -48,17 +48,19 @@ let main argv =
 
     let dictAPI =
         // Uncomment if you have implemented a dictionary. last element None if you have not implemented a GADDAG
-        Some (Trie.empty, Trie.insert, Trie.step, None)
+        Some(Trie.empty, Trie.insert, Trie.step, None)
 
     // Uncomment this line to call your client
 
     let (dictionary, time) =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
-    let players = [ ("QWERTY_Quitters", dictionary, QWERTY_Quitters.Scrabble.startGame ); ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)]
+    let players =
+        [ ("QWERTY_Quitters", dictionary, QWERTY_Quitters.Scrabble.startGame)
+          ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame) ]
     // let players =
     //    spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
-    
+
     (* 
     let players =
         spawnMultiples "OxyphenButazone" dictionary Oxyphenbutazone.Scrabble.startGame 2

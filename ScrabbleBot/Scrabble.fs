@@ -32,10 +32,22 @@ module RegEx =
         |> Seq.toList
 
 module Print =
+    open MultiSet
 
     let printHand pieces hand =
         hand
         |> MultiSet.fold (fun _ x i -> forcePrint (sprintf "%d -> (%A, %d)\n" x (Map.find x pieces) i)) ()
+
+    let printWordOptions (pieces: Map<uint32, tile>) (options: MultiSet<list<uint32>>) =
+
+        forcePrint "Printing all options:\n"
+
+        MultiSet.fold
+            (fun _ opt count ->
+                forcePrint "WORD OPTION:\n\n"
+                printHand pieces (MultiSet.ofList opt))
+            ()
+            options
 
 module State =
     open Trie
@@ -48,8 +60,8 @@ module State =
         { board: Parser.board
           dict: Dictionary.Dict
           playerNumber: uint32
-          hand: MultiSet.MultiSet<uint32> 
-          lastPlay: MultiSet.MultiSet<uint32> 
+          hand: MultiSet.MultiSet<uint32>
+          lastPlay: MultiSet.MultiSet<uint32>
           myTurn: bool
           numberOfPlayers: uint32 }
 
@@ -59,7 +71,7 @@ module State =
           playerNumber = pn
           hand = h
           lastPlay = MultiSet.empty
-          myTurn = true 
+          myTurn = true
           numberOfPlayers = n }
 
     let board st = st.board
@@ -72,7 +84,12 @@ module Scrabble =
     open MultiSet
     open Trie
 
-    let rec findPlay (hand : MultiSet.MultiSet<uint32>) (pieces : Map<uint32, 'a>) (trie : Dictionary.Dict) (initialLetter : MultiSet<uint32>) (continuation : MultiSet<uint32>) =
+    let rec findPlay
+        (hand: MultiSet.MultiSet<uint32>)
+        (pieces: Map<uint32, tile>)
+        (trie: Dictionary.Dict)
+        (initialTile: char)
+        =
         // Use Dictionary.step to go recursively through the trie we have (This uses our implementation of Trie.step)
         // Hand contains a set of integers which we need to use Map.find on the pieces Map to figure out what letter they represent
         // Preferably, we find longer words (this makes it easier to complete a game)
@@ -80,39 +97,54 @@ module Scrabble =
         // Otherwise use some sort of continuation to find a legal word and then continue and if a longer word is found, use this instead
         // We should handle two cases: One where the first letter is pre-determined and one where it is not (if we start the game or not)
         // One way to handle this is to call this method after the step method for the first letter
-        
 
-
-        let rec aux currHand currTrie currword cont =
+        let rec aux
+            (currHand: MultiSet<uint32>)
+            (currTrie: Dictionary.Dict)
+            (currWord: list<uint32>)
+            (cont: MultiSet<uint32 list>)
+            =
             match (MultiSet.size currHand) with
-            | 0u -> cont
-            | n ->
-                let temp =
-                    MultiSet.fold
-                        (fun a b c ->
-                            let k = Dictionary.step b currTrie 
-                            match k with
-                            | Some (l, j) -> 
-                                aux (MultiSet.removeSingle b currHand) j (MultiSet.addSingle b currword)
-                            | None -> a
-                            )
-                        cont currHand 
-                failwith ""
-            // MultiSet.fold (fun set element count -> "") 
-        
-        let possibleWords =
-            aux hand trie initialLetter MultiSet.empty
-            // let folder = fun set element count -> MultiSet.addSingle element set
-            // MultiSet.fold folder initialLetter hand
-            
+            | 0u -> cont // Return continuation if no pieces left in hand
+            | _ -> // Equivalent to pieces left in hand
+                MultiSet.fold
+                    (fun _ nextLetter countOfThisLetter ->
+                        // For each letter left in our hand:
+                        let (nextTile: tile) = Map.find nextLetter pieces
 
-        failwith "Not implemented yet"
+                        Set.fold
+                            (fun _ (nextChar, _) ->
+
+                                let subTrieOption = Dictionary.step nextChar currTrie
+
+                                match subTrieOption with
+                                | Some(isWord, subTrie) ->
+                                    let currWord = (nextLetter :: currWord)
+                                    let newContinuation = if isWord then MultiSet.addSingle currWord cont else cont
+
+                                    aux (MultiSet.removeSingle nextLetter currHand) subTrie currWord newContinuation
+                                | None -> cont)
+                            MultiSet.empty // This needs to change
+                            nextTile)
+                    MultiSet.empty // This need to change
+                    currHand
+
+
+        let initialTrieOption = Dictionary.step initialTile trie
+
+        let initialTrie =
+            match initialTrieOption with
+            | Some(j, k) -> k
+            | None -> failwith "No words begin with this letter in our Trie"
+
+        aux hand initialTrie [] MultiSet.empty
+
 
     let playGame cstream pieces (st: State.state) =
 
         let rec aux (st: State.state) =
             Print.printHand pieces (State.hand st)
-            
+
             // Check if it is our turn
             if st.myTurn then
                 // remove the force print when you move on from manual input (or when you have learnt the format)
@@ -120,7 +152,9 @@ module Scrabble =
                     "Input move (format '(<x-coordinate> <y-coordinate> <piece id><character><point-value> )*', note the absence of space between the last inputs)\n\n"
 
                 // TODO implement some logic that figures out the next play
-                let nextPlay = findPlay st.hand pieces st.dict
+                let nextPlay = findPlay st.hand pieces st.dict 'A'
+
+                Print.printWordOptions pieces nextPlay
 
                 let input = System.Console.ReadLine()
                 let move = RegEx.parseMove input
@@ -129,8 +163,8 @@ module Scrabble =
                 send cstream (SMPlay move)
 
                 // I dunno what the below debug line does different from the above one...
-                // It used to be below "let msg {...}" but because of the if-statement, 
-                // I pulled it into the same scope as "let move {...}" 
+                // It used to be below "let msg {...}" but because of the if-statement,
+                // I pulled it into the same scope as "let move {...}"
                 debugPrint (sprintf "Player %d <- Server:\n%A\n" (State.playerNumber st) move) // keep the debug lines. They are useful.
 
             let msg = recv cstream
@@ -138,47 +172,55 @@ module Scrabble =
             match msg with
             | RCM(CMPlaySuccess(ms, points, newPieces)) ->
                 (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
-                
+
                 // Hand:
                 // Remove the last played pieces from current hand state
                 let handWithoutUsedPieces = MultiSet.subtract st.hand st.lastPlay
                 // Add new pieces to the hand state
-                let newHand = List.fold (fun acc (x, k) -> MultiSet.add x k acc) handWithoutUsedPieces newPieces
-                
-                let st': State.state = {
-                    playerNumber = st.playerNumber
-                    board = st.board
-                    dict = st.dict
-                    hand = newHand
-                    lastPlay = st.hand // Maybe wrong
-                    myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
-                    numberOfPlayers = st.numberOfPlayers
-                } // This state needs to be updated
+                let newHand =
+                    List.fold (fun acc (x, k) -> MultiSet.add x k acc) handWithoutUsedPieces newPieces
+
+                let st': State.state =
+                    { playerNumber = st.playerNumber
+                      board = st.board
+                      dict = st.dict
+                      hand = newHand
+                      lastPlay = st.hand // Maybe wrong
+                      myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
+                      numberOfPlayers = st.numberOfPlayers } // This state needs to be updated
+
                 aux st'
             | RCM(CMPlayed(pid, ms, points)) ->
                 (* Successful play by other player. Update your state *)
-                let st': State.state = {
-                    playerNumber = st.playerNumber
-                    board = st.board
-                    dict = st.dict
-                    hand = st.hand
-                    lastPlay = MultiSet.empty // Should not matter to keep their last play right now
-                    myTurn = if ((pid+1u) % st.numberOfPlayers = st.playerNumber) then true else false
-                    numberOfPlayers = st.numberOfPlayers
-                }
-                    // This state needs to be updated
+                let st': State.state =
+                    { playerNumber = st.playerNumber
+                      board = st.board
+                      dict = st.dict
+                      hand = st.hand
+                      lastPlay = MultiSet.empty // Should not matter to keep their last play right now
+                      myTurn =
+                        if ((pid + 1u) % st.numberOfPlayers = st.playerNumber) then
+                            true
+                        else
+                            false
+                      numberOfPlayers = st.numberOfPlayers }
+                // This state needs to be updated
                 aux st'
             | RCM(CMPlayFailed(pid, ms)) ->
                 (* Failed play. Update your state *)
-                let st': State.state = {
-                    playerNumber = st.playerNumber
-                    board = st.board
-                    dict = st.dict
-                    hand = st.hand
-                    lastPlay = MultiSet.empty // Should not matter to keep their last play right now
-                    myTurn = if ((pid+1u) % st.numberOfPlayers = st.playerNumber) then true else false
-                    numberOfPlayers = st.numberOfPlayers
-                }
+                let st': State.state =
+                    { playerNumber = st.playerNumber
+                      board = st.board
+                      dict = st.dict
+                      hand = st.hand
+                      lastPlay = MultiSet.empty // Should not matter to keep their last play right now
+                      myTurn =
+                        if ((pid + 1u) % st.numberOfPlayers = st.playerNumber) then
+                            true
+                        else
+                            false
+                      numberOfPlayers = st.numberOfPlayers }
+
                 aux st'
             | RCM(CMGameOver _) -> ()
             | RCM a -> failwith (sprintf "not implmented: %A" a)
