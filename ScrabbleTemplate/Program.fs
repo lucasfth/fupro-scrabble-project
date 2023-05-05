@@ -56,16 +56,12 @@ let main argv =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
     let players =
-        spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 5 @
+        spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 5 @ // Change last 5 to the number of players to play with
         [ ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)
           ]
     // let players =
     //    spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
-
-    (* 
-    let players =
-        spawnMultiples "OxyphenButazone" dictionary Oxyphenbutazone.Scrabble.startGame 2
-    *)
+    // Play against self (2 players in total())
 
 
     do ScrabbleServer.Comm.startGame board dictionary handSize timeout tiles seed port players

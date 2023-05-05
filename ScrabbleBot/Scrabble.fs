@@ -35,7 +35,7 @@ module RegEx =
 module Print =
     let printHand pieces hand =
         hand
-        |> MultiSet.fold (fun _ x i -> forcePrint (sprintf "%d -> (%A, %d)\n" x (Map.find x pieces) i)) ()
+        |> MultiSet.fold (fun _ x i -> debugPrint (sprintf "%d -> (%A, %d)\n" x (Map.find x pieces) i)) ()
 
 module State =
     // Make sure to keep your state localised in this module. It makes your life a whole lot easier.
@@ -106,17 +106,6 @@ module Scrabble =
         let reversed = List.rev letters
         
         aux isBuildingRight initialX initialY reversed List.empty
-
-        // if usedTile (initialX, initialY) usedTilesMap
-        // then 
-        //     if usedTile (initialX - 1, initialY) usedTilesMap // Check direction and add one to coordinate
-        //     then 
-        //         // forcePrint "trying to go down"
-        //         aux false initialX (initialY) reversed List.empty // go down
-        //     else 
-        //         // forcePrint "trying to go right"
-        //         aux true (initialX) initialY reversed List.empty // go right
-        // else aux true initialX initialY reversed List.empty // Base case: First word of the game - go right
         
     let decidePlay words folder _
         =
@@ -130,15 +119,11 @@ module Scrabble =
         (trie: Dictionary.Dict)
         (coord: coord)
         folder
-//        (initialTile: char)
         =
         // Use Dictionary.step to go recursively through the trie we have (This uses our implementation of Trie.step)
         // Hand contains a set of integers which we need to use Map.find on the pieces Map to figure out what letter they represent
         // Preferably, we find longer words (this makes it easier to complete a game)
         // To do so, we should step through the Trie and add all results to a list and find the longest word of these and return it
-        // Otherwise use some sort of continuation to find a legal word and then continue and if a longer word is found, use this instead
-        // We should handle two cases: One where the first letter is pre-determined and one where it is not (if we start the game or not)
-        // One way to handle this is to call this method after the step method for the first letter
 
         let rec aux // This returns a MultiSet of options, where an option is a list of uint32 representing tileIDs for a given word
             (currHand: MultiSet<uint32>)
@@ -241,7 +226,7 @@ module Scrabble =
         let rec aux anchorpoints =
             match anchorpoints with
             | [] -> 
-                forcePrint "There was not found any legal plays"
+                // There was not found any legal plays. This will cause our Bot to request changing tiles.
                 (false, ((0, 0), []))
             | (coord, char) :: tail -> 
                 let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true
@@ -259,8 +244,6 @@ module Scrabble =
                     else currentBestWord)
 
                 let prefix = findPrefix usedTiles coord (fst maxLengthOfWord) []
-
-                forcePrint (sprintf "Found prefix: %A\n" prefix)
 
                 let initialTrieOption = Dictionary.step prefix.Head trie
 
@@ -314,9 +297,7 @@ module Scrabble =
 
             match msg with
             | RCM(CMPlaySuccess(ms, points, newPieces)) ->
-                (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
-                forcePrint (sprintf "MS my turn: %A" ms)
-                
+                (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)                
                 // Hand:
                 let usedIds = 
                     List.foldBack (fun (_, (tileId, _)) acc -> MultiSet.addSingle tileId acc)
@@ -343,12 +324,6 @@ module Scrabble =
                 aux st'
             | RCM(CMPlayed(pid, ms, points)) ->
                 (* Successful play by other player. Update your state *)
-
-                forcePrint (sprintf "Next player: %A\n" (pid + 1u))
-                forcePrint (sprintf "Number of players: %A\n" st.numberOfPlayers)
-                forcePrint (sprintf "Next player modulo: %A\n" (pid % st.numberOfPlayers))
-                forcePrint (sprintf "My player id: %A\n" st.playerNumber)
-                forcePrint (sprintf "MyTurn calculation: %A" ((pid % st.numberOfPlayers) = st.playerNumber))
 
                 let st': State.state =
                     { playerNumber = st.playerNumber
@@ -396,16 +371,11 @@ module Scrabble =
                 aux st'
             | RCM(CMGameOver _) -> ()
             | RCM a -> failwith (sprintf "not implmented: %A" a)
-            // | RGPE(GPENotEnoughPieces) ->
-            //     send cstream SMPass
-            //     send cstream SMPass
-            //     send cstream SMPass
             | RGPE err ->
                 match List.head err with
                 | GPENotEnoughPieces (_, piecesLeft) -> 
-                    forcePrint "\n\nPrinting remaining hand:\n"
+                    debugPrint "\n\nPrinting remaining hand:\n"
                     Print.printHand pieces st.hand
-                    forcePrint "-----------------\n"
 
                     send cstream SMPass
                     send cstream SMPass
@@ -443,8 +413,7 @@ module Scrabble =
         )
 
         //let dict = dictf true // Uncomment if using a gaddag for your dictionary
-        // let dict = dictf false // Uncomment if using a trie for your dictionary
-        let dict = dictf false
+        let dict = dictf false // Uncomment if using a trie for your dictionary
 
         let board = Parser.mkBoard boardP
 
