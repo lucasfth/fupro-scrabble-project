@@ -63,7 +63,8 @@ module State =
           hand: MultiSet.MultiSet<uint32>
           lastPlay: MultiSet.MultiSet<uint32>
           myTurn: bool
-          numberOfPlayers: uint32 }
+          numberOfPlayers: uint32
+          anchorPoints : (coord * char) list}
 
     let mkState b d pn h n =
         { board = b
@@ -72,7 +73,8 @@ module State =
           hand = h
           lastPlay = MultiSet.empty
           myTurn = true
-          numberOfPlayers = n }
+          numberOfPlayers = n 
+          anchorPoints = [] }
 
     let board st = st.board
     let dict st = st.dict
@@ -84,7 +86,7 @@ module Scrabble =
     open MultiSet
     open Trie
 
-    let decidePlay (words : MultiSet<uint32 list>) folder pieces
+    let decidePlay (words : MultiSet<(uint32 * char * int) list>) folder pieces
         =
         // Use folder (function) to determine which word is the best
         // pieces will be used if the folder starts requiring to know the characters on the tiles
@@ -94,7 +96,7 @@ module Scrabble =
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
-        (initialTile: char)
+//        (initialTile: char)
         =
         // Use Dictionary.step to go recursively through the trie we have (This uses our implementation of Trie.step)
         // Hand contains a set of integers which we need to use Map.find on the pieces Map to figure out what letter they represent
@@ -107,54 +109,78 @@ module Scrabble =
         let rec aux // This returns a MultiSet of options, where an option is a list of uint32 representing tileIDs for a given word
             (currHand: MultiSet<uint32>)
             (currTrie: Dictionary.Dict)
-            (currWord: list<uint32>)
-            (cont: MultiSet<uint32 list>)
+            (currWord: list<uint32 * char * int>)
+            (cont: MultiSet<(uint32 * char * int) list>)
             =
             match (MultiSet.size currHand) with
             | 0u -> cont // Return continuation if no pieces left in hand
             | _ -> // Equivalent to pieces left in hand
+
+                // This iterates over tiles in our hand
                 MultiSet.fold
-                    (fun subContinuation nextLetter countOfThisLetter ->
-                        // For each letter left in our hand:
-                        let (nextTile: tile) = Map.find nextLetter pieces
+                    (fun subContinuation nextTileId countOfThisLetter ->
+                        // For each tile left in our hand: (can be wildcards)
+                        let (nextTile: tile) = Map.find nextTileId pieces
 
+                        // This iterates over each possible character value of a tile
                         Set.fold
-                            (fun subSubContinuation (nextChar, _) ->
+                            (fun subSubContinuation (nextChar, pointvalue) ->
 
+                                // Step into next trie node
                                 let subTrieOption = Dictionary.step nextChar currTrie
-
+                        
                                 match subTrieOption with
+                                // If the current node of the trie exists, then it is "Some"
                                 | Some(isWord, subTrie) ->
-                                    let currWord = (nextLetter :: currWord)
+                                    let (currWord : list<uint32 * char * int>) = ((nextTileId, nextChar, pointvalue) :: currWord)
 
                                     let newContinuation =
+                                        // if current node is also a word, then add the word to the result list
                                         if isWord then
                                             MultiSet.addSingle currWord subSubContinuation
+                                        // if not then do not add the word
                                         else
                                             subSubContinuation
 
+                                    // Union the result of the recursive call (subnode) with the current node
                                     MultiSet.union
                                         (aux
-                                            (MultiSet.removeSingle nextLetter currHand)
+                                            (MultiSet.removeSingle nextTileId currHand)
                                             subTrie
                                             currWord
                                             newContinuation)
                                         subSubContinuation
                                 | None -> subSubContinuation)
-                            subContinuation // This needs to change
+                            subContinuation // TODO This needs to change
                             nextTile)
-                    cont // This need to change
+                    cont // TODO This need to change
                     currHand
 
+        aux hand trie [] MultiSet.empty
 
-        let initialTrieOption = Dictionary.step initialTile trie
+    let findPlayFromAnchorPoint
+        (anchorpoints: (coord * char) list)
+        (hand: MultiSet.MultiSet<uint32>)
+        (pieces: Map<uint32, tile>)
+        (trie: Dictionary.Dict)
+        : MultiSet<list<uint32 * char * int>>
+        =
+        let rec aux anchorpoints : MultiSet<List<uint32 * char * int>> =
+            match anchorpoints with
+            | [] -> 
+                forcePrint "There was not found any legal plays"
+                failwith "No legal play found"
+            | (_, char) :: tail -> 
+                let initialTrieOption = Dictionary.step char trie
 
-        let initialTrie =
-            match initialTrieOption with
-            | Some(j, k) -> k
-            | None -> failwith "No words begin with this letter in our Trie"
-
-        aux hand initialTrie [] MultiSet.empty
+                match initialTrieOption with
+                | Some(j, k) ->
+                    let play = findPlay hand pieces k
+                    if MultiSet.size play = 0u
+                        then aux tail
+                        else play
+                | None -> aux tail
+        aux anchorpoints
 
 
     let playGame cstream pieces (st: State.state) =
@@ -172,24 +198,37 @@ module Scrabble =
                 let A: tile = Set.ofList [ ('A', 0) ]
                 let M: tile = Set.ofList [ ('M', 0) ]
                 let P: tile = Set.ofList [ ('P', 0) ]
-                // ABAMP
+                // AMP
                 let debugPieces: Map<uint32, tile> =
                     Map.ofList [ (1u, B); (2u, A); (3u, M); (4u, P) ]
 
                 let debugHand: MultiSet<uint32> = MultiSet.ofList [ 1u; 2u; 3u; 4u ]
 
                 // some logic that figures out the next play
-                let nextPlay = findPlay (* st.hand *) debugHand (* pieces *) debugPieces st.dict 'A'
+
+                let nextPlay = 
+                    if List.isEmpty st.anchorPoints
+                    then findPlay st.hand pieces st.dict
+                    else
+                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict
+
+                // let nextPlay = findPlay (* st.hand *) debugHand (* pieces *) debugPieces st.dict
 
                 // folder function that gives longest element of list
                 let folder = (fun element count currentWord -> if (List.length element) > (List.length currentWord) then element else currentWord)
 
                 // call function using folder to determine best play
-                let play = decidePlay nextPlay folder debugPieces
+                let play = decidePlay nextPlay folder pieces
 
-                Print.printWordOptions debugPieces nextPlay
+                // Print.printWordOptions pieces nextPlay
                 
-                forcePrint (sprintf "Word decided: %A" (List.fold (fun st el -> (Map.find el debugPieces) :: st) [] play))
+                forcePrint (sprintf "Wordlength: %A\n" (List.length play))
+
+                let foundPieces = (List.fold (fun st (id, char, pv) -> (id, char, pv) :: st) [] play)
+
+                forcePrint (sprintf "Word decided: %A\n" foundPieces)
+                
+                forcePrint "Should have printed word decided by now\n"
 
                 // Print.printWordOptions pieces nextPlay
 
@@ -210,6 +249,22 @@ module Scrabble =
             | RCM(CMPlaySuccess(ms, points, newPieces)) ->
                 (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
 
+                // Assuming ms used first letter as anchorpoint, we ignore the first value
+                // let newAnchorPoints =
+                //     List.foldBack
+                //         (fun el acc ->
+                //             (fst el, fst (snd (snd el))) :: acc) // Should take (coord, char) from element and add to anchorPoints
+                //         ms
+                //         st.anchorPoints
+                
+                let newAnchorPoints = 
+                    List.foldBack 
+                        (fun el acc -> 
+                            match el with 
+                            | (coord, (_, (char, _))) -> (coord, char) :: acc) // Should take (coord, char) from element and add to anchorPoints
+                        ms // We don't want to use the first character 
+                        st.anchorPoints
+                
                 // Hand:
                 // Remove the last played pieces from current hand state
                 let handWithoutUsedPieces = MultiSet.subtract st.hand st.lastPlay
@@ -218,13 +273,15 @@ module Scrabble =
                     List.fold (fun acc (x, k) -> MultiSet.add x k acc) handWithoutUsedPieces newPieces
 
                 let st': State.state =
-                    { playerNumber = st.playerNumber
-                      board = st.board
-                      dict = st.dict
-                      hand = newHand
-                      lastPlay = st.hand // Maybe wrong
+                    { playerNumber = st.playerNumber // doesn't change
+                      board = st.board // I don't think this should change
+                      dict = st.dict // doesn't change
+                      hand = newHand // correct
+                      lastPlay = MultiSet.empty // lastPlay is empty on succesful play
                       myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
-                      numberOfPlayers = st.numberOfPlayers } // This state needs to be updated
+                      numberOfPlayers = st.numberOfPlayers // doesn't change
+                      anchorPoints = newAnchorPoints // correct
+                      } // This state needs to be updated
 
                 aux st'
             | RCM(CMPlayed(pid, ms, points)) ->
@@ -240,7 +297,9 @@ module Scrabble =
                             true
                         else
                             false
-                      numberOfPlayers = st.numberOfPlayers }
+                      numberOfPlayers = st.numberOfPlayers 
+                      anchorPoints = st.anchorPoints // Update this with new play
+                      }
                 // This state needs to be updated
                 aux st'
             | RCM(CMPlayFailed(pid, ms)) ->
@@ -256,7 +315,8 @@ module Scrabble =
                             true
                         else
                             false
-                      numberOfPlayers = st.numberOfPlayers }
+                      numberOfPlayers = st.numberOfPlayers
+                      anchorPoints = st.anchorPoints }
 
                 aux st'
             | RCM(CMGameOver _) -> ()
