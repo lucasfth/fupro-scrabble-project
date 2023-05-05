@@ -90,7 +90,7 @@ module Scrabble =
         | Some _ -> true
         | None -> false
 
-    let findPlayCoords usedTilesMap ((initialX, initialY), letters) = 
+    let findPlayCoords usedTilesMap (isBuildingRight, ((initialX, initialY), letters)) = 
         let rec aux (shouldGoRight : bool) x y (remainingLetters) acc =
             if
                 List.isEmpty remainingLetters
@@ -105,16 +105,18 @@ module Scrabble =
 
         let reversed = List.rev letters
         
-        if usedTile (initialX, initialY) usedTilesMap
-        then 
-            if usedTile (initialX - 1, initialY) usedTilesMap // Check direction and add one to coordinate
-            then 
-                // forcePrint "trying to go down"
-                aux false initialX (initialY) reversed List.empty // go down
-            else 
-                // forcePrint "trying to go right"
-                aux true (initialX) initialY reversed List.empty // go right
-        else aux true initialX initialY reversed List.empty // Base case: First word of the game - go right
+        aux isBuildingRight initialX initialY reversed List.empty
+
+        // if usedTile (initialX, initialY) usedTilesMap
+        // then 
+        //     if usedTile (initialX - 1, initialY) usedTilesMap // Check direction and add one to coordinate
+        //     then 
+        //         // forcePrint "trying to go down"
+        //         aux false initialX (initialY) reversed List.empty // go down
+        //     else 
+        //         // forcePrint "trying to go right"
+        //         aux true (initialX) initialY reversed List.empty // go right
+        // else aux true initialX initialY reversed List.empty // Base case: First word of the game - go right
         
     let decidePlay words folder _
         =
@@ -217,39 +219,68 @@ module Scrabble =
                 else if isBuildingRight 
                     then maxLengthOfWord currentTiles (x+1, y) (wordLength+1) isBuildingRight // continue right
                     else maxLengthOfWord currentTiles (x, y+1) (wordLength+1) isBuildingRight  // continue down
-                
+    
+    let rec findPrefix 
+        (usedTiles : Map<coord, char>)
+        ((x, y) : coord)
+        (isBuildingRight : bool)
+        cont
+        = 
+        let prefix = Map.tryFind (x,y) usedTiles
+        match prefix with
+        | Some char -> findPrefix usedTiles (if isBuildingRight then (x-1, y) else (x, y-1)) isBuildingRight (cont @ [char])
+        | None -> cont
 
     let findPlayFromAnchorPoint
         (anchorpoints: (coord * char) list)
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
-        (usedTiles: Map<coord,char>) =
+        (usedTiles: Map<coord,char>) 
+        =
         let rec aux anchorpoints =
             match anchorpoints with
             | [] -> 
                 forcePrint "There was not found any legal plays"
-                ((0, 0), [])
+                (false, ((0, 0), []))
             | (coord, char) :: tail -> 
-            
-                let maxLengthOfWord = 
-                    shouldBuildRight coord usedTiles |> maxLengthOfWord usedTiles coord 0
+                let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true
+                let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false
+
+                let maxLengthOfWord =
+                    if maxLengthOfWordRight > maxLengthOfWordDown
+                    then (true, maxLengthOfWordRight)
+                    else (false, maxLengthOfWordDown)
                 
                 let folder = (fun element _ currentBestWord -> 
                     if (List.length element) > (List.length currentBestWord) && 
-                       (List.length element <= maxLengthOfWord)
+                       (List.length element <= snd maxLengthOfWord)
                     then element 
                     else currentBestWord)
 
+                let prefix = findPrefix usedTiles coord (fst maxLengthOfWord) []
+
+                forcePrint (sprintf "Found prefix: %A\n" prefix)
+
                 let initialTrieOption = Dictionary.step char trie
 
-                match initialTrieOption with
-                | Some(isWord, subTrie) ->
-                    let play = findPlay hand pieces subTrie coord folder
+                let initialTrie = 
+                    List.fold (fun subtrieOption ch -> 
+                        match subtrieOption with
+                        | Some (_, subtrie) -> Dictionary.step ch subtrie
+                        | None -> None )
+                        initialTrieOption
+                        prefix.Tail
+
+                match initialTrie with
+                | Some (isWord, trie) ->
+                    let play = findPlay hand pieces trie coord folder
+                    let bool = fst maxLengthOfWord
                     if List.length (snd play) = 0
                         then aux tail
-                        else play
+                        else (bool, play)
                 | None -> aux tail
+
         aux anchorpoints
 
 
@@ -268,11 +299,11 @@ module Scrabble =
 
                 let play = 
                     if List.isEmpty st.anchorPoints
-                    then findPlay st.hand pieces st.dict (-1, 0) findLongestWord // This is the first play of the game, anchor point needed = hardcode (-1, 0)
+                    then (true, findPlay st.hand pieces st.dict (-1, 0) findLongestWord) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
                     else
                         findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
 
-                if List.isEmpty (snd play)
+                if List.isEmpty (snd (snd play))
                     then
                         send cstream (SMChange (MultiSet.toList st.hand)) // Change whole hand
                     else                    
