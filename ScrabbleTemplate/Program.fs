@@ -57,6 +57,7 @@ let main argv =
 
     let players =
         [ ("QWERTY_Quitters", dictionary, QWERTY_Quitters.Scrabble.startGame)
+          // ("QWERTY_Quitters 2", dictionary, QWERTY_Quitters.Scrabble.startGame)
           // ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)
           ]
     // let players =

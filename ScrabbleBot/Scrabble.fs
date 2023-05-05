@@ -117,10 +117,10 @@ module Scrabble =
         then 
             if usedTile (initialX - 1, initialY) usedTilesMap // Check direction and add one to coordinate
             then 
-                forcePrint "trying to go down"
+                // forcePrint "trying to go down"
                 aux false initialX (initialY) reversed List.empty // go down
             else 
-                forcePrint "trying to go right"
+                // forcePrint "trying to go right"
                 aux true (initialX) initialY reversed List.empty // go right
         else aux true initialX initialY reversed List.empty // Base case: First word of the game - go right
         
@@ -128,14 +128,14 @@ module Scrabble =
         =
         // Use folder (function) to determine which word is the best
         // pieces will be used if the folder starts requiring to know the characters on the tiles
-        match words with
-        | (coord, list) -> (coord, MultiSet.foldBack folder list [])
+        MultiSet.foldBack folder words []
 
     let rec findPlay
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
         (coord: coord)
+        folder
 //        (initialTile: char)
         =
         // Use Dictionary.step to go recursively through the trie we have (This uses our implementation of Trie.step)
@@ -195,27 +195,66 @@ module Scrabble =
                             nextTile)
                     cont // TODO This need to change
                     currHand
+        let possibleWords = aux hand trie [] MultiSet.empty
 
-        (coord, aux hand trie [] MultiSet.empty)
+        (coord, decidePlay possibleWords folder pieces)
+
+    let shouldBuildRight (x, y) usedTilesMap =
+       if usedTile (x - 1, y) usedTilesMap // Check direction and add one to coordinate
+            then 
+                false // go down
+            else 
+                true // go right 
+
+    let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight
+        =
+        let isIllegalPlay (x, y) =
+            usedTile (x, y) currentTiles || // check current
+            usedTile (x+1, y) currentTiles || // check right
+            usedTile (x, y+1) currentTiles || // check down
+            if isBuildingRight
+                then usedTile (x, y-1) currentTiles // check up
+                else usedTile (x-1, y) currentTiles // check left
+        if wordLength > 8 // don't continue further than 9 letter words
+            then wordLength
+            else if
+                (if isBuildingRight
+                    then isIllegalPlay (x+1, y)
+                    else isIllegalPlay (x, y+1))
+                then wordLength
+                else if isBuildingRight 
+                    then maxLengthOfWord currentTiles (x+1, y) (wordLength+1) isBuildingRight // continue right
+                    else maxLengthOfWord currentTiles (x, y+1) (wordLength+1) isBuildingRight  // continue down
+                
 
     let findPlayFromAnchorPoint
         (anchorpoints: (coord * char) list)
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
-        =
+        (usedTiles: Map<coord,char>) =
         let rec aux anchorpoints =
             match anchorpoints with
             | [] -> 
                 forcePrint "There was not found any legal plays"
-                ((0, 0), MultiSet.empty)
+                ((0, 0), [])
             | (coord, char) :: tail -> 
+            
+                let maxLengthOfWord = 
+                    shouldBuildRight coord usedTiles |> maxLengthOfWord usedTiles coord 0
+                
+                let folder = (fun element count currentBestWord -> 
+                    if (List.length element) > (List.length currentBestWord) && 
+                       (List.length element <= maxLengthOfWord)
+                    then element 
+                    else currentBestWord)
+
                 let initialTrieOption = Dictionary.step char trie
 
                 match initialTrieOption with
                 | Some(isWord, subTrie) ->
-                    let play = findPlay hand pieces subTrie coord
-                    if MultiSet.size (snd play) = 0u
+                    let play = findPlay hand pieces subTrie coord folder
+                    if List.length (snd play) = 0
                         then aux tail
                         else play
                 | None -> aux tail
@@ -241,51 +280,25 @@ module Scrabble =
                 let debugHand: MultiSet<uint32> = MultiSet.ofList [ 1u; 2u; 3u; 4u ]
 
                 // some logic that figures out the next play
-                let nextPlay = 
+                let findLongestWord = (fun element count currentBestWord -> 
+                    if (List.length element) > (List.length currentBestWord)
+                    then element 
+                    else currentBestWord)
+
+                let play = 
                     if List.isEmpty st.anchorPoints
-                    then findPlay st.hand pieces st.dict (-1, 0) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
+                    then findPlay st.hand pieces st.dict (-1, 0) findLongestWord // This is the first play of the game, anchor point needed = hardcode (-1, 0)
                     else
-                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict // Anchor point needed
+                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
 
-                if MultiSet.isEmpty (snd nextPlay)
+                if List.isEmpty (snd play)
                     then
-                        forcePrint "Changing hands..."
-                        send cstream (SMChange)
-                    else
-
-                    // let nextPlay = findPlay (* st.hand *) debugHand (* pieces *) debugPieces st.dict
-
-                    // folder function that gives longest element of list
-                    let folder = (fun element count currentWord -> if (List.length element) > (List.length currentWord) then element else currentWord)
-
-                    // call function using folder to determine best play
-                    let play = decidePlay nextPlay folder pieces
-
-                    // find coordinates for play
-                    
-                    let playWithCoords = findPlayCoords st.usedTile play
-
-                    // Print.printWordOptions pieces nextPlay
-                    
-                    forcePrint (sprintf "Wordlength: %A\n" (List.length (snd play)))
-
-                    forcePrint (sprintf "Word decided: %A\n" (List.rev (snd play)))
-
-                    forcePrint (sprintf "Has char 0,0: %A - 1,1: %A - -1,0: %A  --boardprog\n" (st.boardProg (0, 0)) (st.boardProg (1, 1)) (st.boardProg (-1, 0)))
-
-                    forcePrint (sprintf "Used tiles %A\n" playWithCoords)
-
-                    // Print.printWordOptions pieces nextPlay
-
-                    // let input = System.Console.ReadLine()
-                    // let move = RegEx.parseMove input
-                    
-
-                    // Update state by setting lastPlay to this
-                    // MultiSet.ofList lastPlay
-
-                    // debugPrint (sprintf "Player %d -> Server:\n%A\n" (State.playerNumber st) move) // keep the debug lines. They are useful.
-                    send cstream (SMPlay playWithCoords)
+                        forcePrint "Changing hands...\n"
+                        send cstream (SMChange (MultiSet.toList st.hand)) // Change whole hand
+                        forcePrint "Changed hands...\n"
+                    else                    
+                        let playWithCoords = findPlayCoords st.usedTile play
+                        send cstream (SMPlay playWithCoords)
 
 
                 // I dunno what the below debug line does different from the above one...
@@ -319,7 +332,7 @@ module Scrabble =
                     List.fold
                         (fun acc (coord, (_, (char, _))) -> (coord, char) :: acc)
                         st.anchorPoints
-                        ms
+                        ms.Tail
                 
                 let newUsedTiles =
                     List.foldBack
@@ -382,6 +395,23 @@ module Scrabble =
                       usedTile = st.usedTile}
                 // This state needs to be updated
                 aux st'
+            | RCM(CMChangeSuccess newPieces) ->
+                let newHand = List.foldBack (fun (x, cnt) acc -> MultiSet.add x cnt acc) newPieces MultiSet.empty
+                // Assume whole hand is changed
+                let st': State.state = {
+                    playerNumber = st.playerNumber
+                    board = st.board
+                    dict = st.dict
+                    hand = newHand
+                    lastPlay = MultiSet.empty // Should not matter to keep their last play right now
+                    myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
+                    numberOfPlayers = st.numberOfPlayers
+                    anchorPoints = st.anchorPoints 
+                    boardProg = st.boardProg
+                    usedTile = st.usedTile 
+                }
+
+                aux st'
             | RCM(CMPlayFailed(pid, ms)) ->
                 (* Failed play. Update your state *)
                 send cstream (SMForfeit) // TODO: Remove
@@ -404,10 +434,23 @@ module Scrabble =
                 aux st'
             | RCM(CMGameOver _) -> ()
             | RCM a -> failwith (sprintf "not implmented: %A" a)
+            // | RGPE(GPENotEnoughPieces) ->
+            //     send cstream SMPass
+            //     send cstream SMPass
+            //     send cstream SMPass
             | RGPE err ->
-                printfn "Gameplay Error:\n%A" err
-                aux st
+                match List.head err with
+                | GPENotEnoughPieces (_, piecesLeft) -> 
+                    forcePrint "\n\nPrinting remaining hand:\n"
+                    Print.printHand pieces st.hand
+                    forcePrint "-----------------\n"
 
+                    send cstream SMPass
+                    send cstream SMPass
+                    send cstream SMPass
+                | err -> 
+                    printfn "Gameplay Error:\n%A" err
+                    aux st
 
         aux st
 
