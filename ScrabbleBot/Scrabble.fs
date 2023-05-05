@@ -45,24 +45,36 @@ module State =
           dict: Dictionary.Dict
           playerNumber: uint32
           hand: MultiSet.MultiSet<uint32>
-          lastPlay: MultiSet.MultiSet<uint32>
           myTurn: bool
           numberOfPlayers: uint32
           anchorPoints : (coord * char) list
-          boardProg: (coord -> bool) 
           usedTile: Map<coord, char> }
 
-    let mkState b d pn h n bp map =
+    let mkState b d pn h n map isMyTurn =
         { board = b
           dict = d
           playerNumber = pn
           hand = h
-          lastPlay = MultiSet.empty
-          myTurn = true
+          myTurn = isMyTurn
           numberOfPlayers = n 
           anchorPoints = [] 
-          boardProg = bp 
           usedTile = map }
+
+    let calculateNewAnchorPoints oldAnchorPoints moves =
+        List.fold
+            (fun acc (coord, (_, (char, _))) -> (coord, char) :: acc)
+            oldAnchorPoints
+            moves
+
+    let calculateNewUsedTiles oldUsedTiles moves =
+        List.foldBack
+            (fun el acc ->
+                match el with
+                | (coord, (_, (char, _))) -> 
+                    Map.add coord char acc )
+            moves
+            oldUsedTiles
+
 
     let board st = st.board
     let dict st = st.dict
@@ -272,22 +284,8 @@ module Scrabble =
             match msg with
             | RCM(CMPlaySuccess(ms, points, newPieces)) ->
                 (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
-
-                let newAnchorPoints =
-                    List.fold
-                        (fun acc (coord, (_, (char, _))) -> (coord, char) :: acc)
-                        st.anchorPoints
-                        ms
+                forcePrint (sprintf "MS my turn: %A" ms)
                 
-                let newUsedTiles =
-                    List.foldBack
-                        (fun el acc ->
-                            match el with
-                            | (coord, (_, (char, _))) -> 
-                                Map.add coord char acc )
-                        ms
-                        st.usedTile
-
                 // Hand:
                 let usedIds = 
                     List.foldBack (fun (_, (tileId, _)) acc -> MultiSet.addSingle tileId acc)
@@ -306,33 +304,31 @@ module Scrabble =
                       board = st.board // I don't think this should change
                       dict = st.dict // doesn't change
                       hand = newHand // correct
-                      lastPlay = empty // lastPlay is empty on succesful play
                       myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
                       numberOfPlayers = st.numberOfPlayers // doesn't change
-                      anchorPoints = newAnchorPoints // correct
-                      boardProg = st.boardProg
-                      usedTile = newUsedTiles } // This state needs to be updated
+                      anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // correct
+                      usedTile = State.calculateNewUsedTiles st.usedTile ms } // This state needs to be updated
 
                 aux st'
             | RCM(CMPlayed(pid, ms, points)) ->
                 (* Successful play by other player. Update your state *)
+
+                forcePrint (sprintf "Next player: %A\n" (pid + 1u))
+                forcePrint (sprintf "Number of players: %A\n" st.numberOfPlayers)
+                forcePrint (sprintf "Next player modulo: %A\n" (pid % st.numberOfPlayers))
+                forcePrint (sprintf "My player id: %A\n" st.playerNumber)
+                forcePrint (sprintf "MyTurn calculation: %A" ((pid % st.numberOfPlayers) = st.playerNumber))
+
                 let st': State.state =
                     { playerNumber = st.playerNumber
                       board = st.board // do not update
                       dict = st.dict // do not update
                       hand = st.hand // do not update
-                      lastPlay = MultiSet.empty // Should not matter to keep their last play right now
-                      myTurn =
-                        if ((pid + 1u) % st.numberOfPlayers = st.playerNumber) then
-                            true
-                        else
-                            false
+                      myTurn = (1u + (pid % st.numberOfPlayers)) = st.playerNumber
                       numberOfPlayers = st.numberOfPlayers 
-                      anchorPoints = st.anchorPoints // Update this with new play
-                      boardProg = st.boardProg //delete
-                      usedTile = st.usedTile // Do update
+                      anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // Update this with new play
+                      usedTile = State.calculateNewUsedTiles st.usedTile ms // Do update
                       }
-                // This state needs to be updated
                 aux st'
             | RCM(CMChangeSuccess newPieces) ->
                 let newHand = List.foldBack (fun (x, cnt) acc -> MultiSet.add x cnt acc) newPieces MultiSet.empty
@@ -342,11 +338,9 @@ module Scrabble =
                     board = st.board
                     dict = st.dict
                     hand = newHand
-                    lastPlay = MultiSet.empty // Should not matter to keep their last play right now
                     myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
                     numberOfPlayers = st.numberOfPlayers
                     anchorPoints = st.anchorPoints 
-                    boardProg = st.boardProg
                     usedTile = st.usedTile 
                 }
 
@@ -359,7 +353,6 @@ module Scrabble =
                       board = st.board
                       dict = st.dict
                       hand = st.hand
-                      lastPlay = MultiSet.empty // Should not matter to keep their last play right now
                       myTurn =
                         if ((pid + 1u) % st.numberOfPlayers = st.playerNumber) then
                             true
@@ -367,7 +360,6 @@ module Scrabble =
                             false
                       numberOfPlayers = st.numberOfPlayers
                       anchorPoints = st.anchorPoints 
-                      boardProg = st.boardProg
                       usedTile = st.usedTile }
 
                 aux st'
@@ -425,8 +417,8 @@ module Scrabble =
 
         let board = Parser.mkBoard boardP
 
-        let boardprog = simpleBoardLangParser.parseSimpleBoardProg boardP
-
         let handSet = List.fold (fun acc (x, k) -> MultiSet.add x k acc) MultiSet.empty hand
 
-        fun () -> playGame cstream tiles (State.mkState board dict playerNumber handSet numPlayers boardprog Map.empty)
+        let isMyTurn = playerNumber = playerTurn
+
+        fun () -> playGame cstream tiles (State.mkState board dict playerNumber handSet numPlayers Map.empty isMyTurn)
