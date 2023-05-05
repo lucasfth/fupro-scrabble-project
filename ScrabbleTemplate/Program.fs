@@ -1,4 +1,7 @@
-﻿// Learn more about F# at http://fsharp.org
+﻿open ScrabbleUtil
+open Trie
+
+// Learn more about F# at http://fsharp.org
 
 let time f =
     let start = System.DateTime.Now
@@ -35,7 +38,7 @@ let main argv =
     //    let board      = ScrabbleUtil.HoleBoard.holeBoard ()
     //    let board      = ScrabbleUtil.InfiniteHoleBoard.infiniteHoleBoard ()
 
-    let words = readLines "ScrabbleTemplate/Dictionaries/English.txt"
+    let words = readLines "Dictionaries/English.txt"
 
     let handSize = 7u
     let timeout = None
@@ -45,16 +48,19 @@ let main argv =
 
     let dictAPI =
         // Uncomment if you have implemented a dictionary. last element None if you have not implemented a GADDAG
-        // Some (Dictionary.empty, Dictionary.insert, Dictionary.step, Some Dictionary.reverse)
-        None
+        Some(Trie.empty, Trie.insert, Trie.step, None)
 
     // Uncomment this line to call your client
 
     let (dictionary, time) =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
-    let players = [ ("QWERTY_Quitters", dictionary, QWERTY_Quitters.Scrabble.startGame ); ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)]
-    //let players =
+    let players =
+        [ ("QWERTY_Quitters 1", dictionary, QWERTY_Quitters.Scrabble.startGame)
+          ("QWERTY_Quitters 2", dictionary, QWERTY_Quitters.Scrabble.startGame)
+          ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)
+          ]
+    // let players =
     //    spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
 
     (* 
