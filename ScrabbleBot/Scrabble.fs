@@ -228,7 +228,7 @@ module Scrabble =
         = 
         let prefix = Map.tryFind (x,y) usedTiles
         match prefix with
-        | Some char -> findPrefix usedTiles (if isBuildingRight then (x-1, y) else (x, y-1)) isBuildingRight (cont @ [char])
+        | Some char -> findPrefix usedTiles (if isBuildingRight then (x-1, y) else (x, y-1)) isBuildingRight (char :: cont)
         | None -> cont
 
     let findPlayFromAnchorPoint
@@ -262,7 +262,7 @@ module Scrabble =
 
                 forcePrint (sprintf "Found prefix: %A\n" prefix)
 
-                let initialTrieOption = Dictionary.step char trie
+                let initialTrieOption = Dictionary.step prefix.Head trie
 
                 let initialTrie = 
                     List.fold (fun subtrieOption ch -> 
