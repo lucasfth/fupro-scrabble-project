@@ -1,6 +1,7 @@
 ﻿namespace QWERTY_Quitters
 
 open ScrabbleUtil
+open ScrabbleLib
 open ScrabbleUtil.ServerCommunication
 
 open System.IO
@@ -64,9 +65,11 @@ module State =
           lastPlay: MultiSet.MultiSet<uint32>
           myTurn: bool
           numberOfPlayers: uint32
-          anchorPoints : (coord * char) list}
+          anchorPoints : (coord * char) list
+          boardProg: (coord -> bool) 
+          usedTile: Map<coord, char> }
 
-    let mkState b d pn h n =
+    let mkState b d pn h n bp map =
         { board = b
           dict = d
           playerNumber = pn
@@ -74,7 +77,9 @@ module State =
           lastPlay = MultiSet.empty
           myTurn = true
           numberOfPlayers = n 
-          anchorPoints = [] }
+          anchorPoints = [] 
+          boardProg = bp 
+          usedTile = map }
 
     let board st = st.board
     let dict st = st.dict
@@ -86,16 +91,46 @@ module Scrabble =
     open MultiSet
     open Trie
 
-    let decidePlay (words : MultiSet<(uint32 * char * int) list>) folder pieces
+    let usedTile coord map =
+        let opt = Map.tryFind coord map
+        match opt with
+        | Some _ -> true
+        | None -> false
+
+    let findPlayCoords usedTilesMap ((initialX, initialY), letters) = 
+        let rec aux (shouldGoRight : bool) x y (remainingLetters: 'd list) acc =
+            if
+                List.isEmpty remainingLetters
+            then
+                acc
+            else
+                let (nextX, nextY) =
+                    if shouldGoRight then (x + 1, y)
+                    else (x, y + 1)
+                // Tile with coordinates appended on the back of the accumulator
+                aux shouldGoRight nextX nextY remainingLetters.Tail (acc @ ([(nextX, nextY), List.head remainingLetters]))
+
+        let reversed = List.rev letters
+        
+        if usedTile (initialX , initialY) usedTilesMap
+        then 
+            if usedTile (initialX - 1, initialY) usedTilesMap // Check direction and add one to coordinate
+            then aux false initialX (initialY + 1) reversed List.empty // go down
+            else aux true (initialX + 1) initialY reversed List.empty // go right
+        else aux true initialX initialY reversed List.empty // Base case: First word of the game - go right
+        
+    let decidePlay words folder pieces
         =
         // Use folder (function) to determine which word is the best
         // pieces will be used if the folder starts requiring to know the characters on the tiles
-        MultiSet.foldBack folder words []
+        match words with
+        | (coord, list) -> (coord, MultiSet.foldBack folder list [])
 
     let rec findPlay
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
+        (coord: coord)
 //        (initialTile: char)
         =
         // Use Dictionary.step to go recursively through the trie we have (This uses our implementation of Trie.step)
@@ -156,27 +191,26 @@ module Scrabble =
                     cont // TODO This need to change
                     currHand
 
-        aux hand trie [] MultiSet.empty
+        (coord, aux hand trie [] MultiSet.empty)
 
     let findPlayFromAnchorPoint
         (anchorpoints: (coord * char) list)
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
-        : MultiSet<list<uint32 * char * int>>
         =
-        let rec aux anchorpoints : MultiSet<List<uint32 * char * int>> =
+        let rec aux anchorpoints =
             match anchorpoints with
             | [] -> 
                 forcePrint "There was not found any legal plays"
                 failwith "No legal play found"
-            | (_, char) :: tail -> 
+            | (coord, char) :: tail -> 
                 let initialTrieOption = Dictionary.step char trie
 
                 match initialTrieOption with
-                | Some(j, k) ->
-                    let play = findPlay hand pieces k
-                    if MultiSet.size play = 0u
+                | Some(isWord, subTrie) ->
+                    let play = findPlay hand pieces subTrie coord
+                    if MultiSet.size (snd play) = 0u
                         then aux tail
                         else play
                 | None -> aux tail
@@ -205,12 +239,11 @@ module Scrabble =
                 let debugHand: MultiSet<uint32> = MultiSet.ofList [ 1u; 2u; 3u; 4u ]
 
                 // some logic that figures out the next play
-
                 let nextPlay = 
                     if List.isEmpty st.anchorPoints
-                    then findPlay st.hand pieces st.dict
+                    then findPlay st.hand pieces st.dict (-1, 0) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
                     else
-                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict
+                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict // Anchor point needed
 
                 // let nextPlay = findPlay (* st.hand *) debugHand (* pieces *) debugPieces st.dict
 
@@ -220,15 +253,19 @@ module Scrabble =
                 // call function using folder to determine best play
                 let play = decidePlay nextPlay folder pieces
 
+                // find coordinates for play
+                
+                let playWithCoords = findPlayCoords st.usedTile play
+
                 // Print.printWordOptions pieces nextPlay
                 
-                forcePrint (sprintf "Wordlength: %A\n" (List.length play))
+                forcePrint (sprintf "Wordlength: %A\n" (List.length (snd play)))
 
-                let foundPieces = (List.fold (fun st (id, char, pv) -> (id, char, pv) :: st) [] play)
+                forcePrint (sprintf "Word decided: %A\n" (List.rev (snd play)))
 
-                forcePrint (sprintf "Word decided: %A\n" foundPieces)
-                
-                forcePrint "Should have printed word decided by now\n"
+                forcePrint (sprintf "Has char 0,0: %A - 1,1: %A - -1,0: %A  --boardprog\n" (st.boardProg (0, 0)) (st.boardProg (1, 1)) (st.boardProg (-1, 0)))
+
+                forcePrint (sprintf "Used tiles %A\n" playWithCoords)
 
                 // Print.printWordOptions pieces nextPlay
 
@@ -265,6 +302,14 @@ module Scrabble =
                         ms // We don't want to use the first character 
                         st.anchorPoints
                 
+                let newUsedTiles =
+                    List.foldBack
+                        (fun el acc ->
+                            match el with
+                            | (coord, (_, (char, _))) -> Map.add coord char acc )
+                        ms
+                        st.usedTile
+
                 // Hand:
                 // Remove the last played pieces from current hand state
                 let handWithoutUsedPieces = MultiSet.subtract st.hand st.lastPlay
@@ -281,7 +326,8 @@ module Scrabble =
                       myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
                       numberOfPlayers = st.numberOfPlayers // doesn't change
                       anchorPoints = newAnchorPoints // correct
-                      } // This state needs to be updated
+                      boardProg = st.boardProg
+                      usedTile = newUsedTiles } // This state needs to be updated
 
                 aux st'
             | RCM(CMPlayed(pid, ms, points)) ->
@@ -299,7 +345,8 @@ module Scrabble =
                             false
                       numberOfPlayers = st.numberOfPlayers 
                       anchorPoints = st.anchorPoints // Update this with new play
-                      }
+                      boardProg = st.boardProg
+                      usedTile = st.usedTile}
                 // This state needs to be updated
                 aux st'
             | RCM(CMPlayFailed(pid, ms)) ->
@@ -316,7 +363,9 @@ module Scrabble =
                         else
                             false
                       numberOfPlayers = st.numberOfPlayers
-                      anchorPoints = st.anchorPoints }
+                      anchorPoints = st.anchorPoints 
+                      boardProg = st.boardProg
+                      usedTile = st.usedTile }
 
                 aux st'
             | RCM(CMGameOver _) -> ()
@@ -360,6 +409,8 @@ module Scrabble =
 
         let board = Parser.mkBoard boardP
 
+        let boardprog = ScrabbleLib.simpleBoardLangParser.parseSimpleBoardProg boardP
+
         let handSet = List.fold (fun acc (x, k) -> MultiSet.add x k acc) MultiSet.empty hand
 
-        fun () -> playGame cstream tiles (State.mkState board dict playerNumber handSet numPlayers)
+        fun () -> playGame cstream tiles (State.mkState board dict playerNumber handSet numPlayers boardprog Map.empty)
