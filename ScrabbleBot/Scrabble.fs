@@ -300,28 +300,25 @@ module Scrabble =
 
             // Check if it is our turn
             if st.myTurn then
-                if st.playerNumber = 1u then
-                    send cstream (SMForfeit)
-                else
-                    // some logic that figures out the next play
-                    let findLongestWord =
-                        (fun element _ currentBestWord ->
-                            if (List.length element) > (List.length currentBestWord) then
-                                element
-                            else
-                                currentBestWord)
-
-                    let play =
-                        if List.isEmpty st.anchorPoints then
-                            (true, findPlay st.hand pieces st.dict (-1, 0) findLongestWord) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
+                // some logic that figures out the next play
+                let findLongestWord =
+                    (fun element _ currentBestWord ->
+                        if (List.length element) > (List.length currentBestWord) then
+                            element
                         else
-                            findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
+                            currentBestWord)
 
-                    if List.isEmpty (snd (snd play)) then
-                        send cstream (SMChange(MultiSet.toList st.hand)) // Change whole hand
+                let play =
+                    if List.isEmpty st.anchorPoints then
+                        (true, findPlay st.hand pieces st.dict (-1, 0) findLongestWord) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
                     else
-                        let playWithCoords = findPlayCoords st.usedTile play
-                        send cstream (SMPlay playWithCoords)
+                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
+
+                if List.isEmpty (snd (snd play)) then
+                    send cstream (SMChange(MultiSet.toList st.hand)) // Change whole hand
+                else
+                    let playWithCoords = findPlayCoords st.usedTile play
+                    send cstream (SMPlay playWithCoords)
 
             let msg = recv cstream
 
@@ -415,6 +412,20 @@ module Scrabble =
                       myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
                       numberOfPlayers = st.numberOfPlayers
                       remainingPlayers = remainingPlayers
+                      anchorPoints = st.anchorPoints
+                      usedTile = st.usedTile }
+
+                aux st'
+            | RCM(CMPassed(pid)) ->
+
+                let st': State.state =
+                    { playerNumber = st.playerNumber
+                      board = st.board
+                      dict = st.dict
+                      hand = st.hand
+                      myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
+                      numberOfPlayers = st.numberOfPlayers
+                      remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile }
 
