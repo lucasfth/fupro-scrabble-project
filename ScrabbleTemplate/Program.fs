@@ -56,7 +56,7 @@ let main argv =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
     let players =
-        spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 5
+        spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 8
     //@ // Change last 5 to the number of players to play with
     //[ ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame) ]
     // let players =

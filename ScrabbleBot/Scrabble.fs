@@ -46,18 +46,16 @@ module State =
           playerNumber: uint32
           hand: MultiSet.MultiSet<uint32>
           myTurn: bool
-          numberOfPlayers: uint32
           remainingPlayers: uint32 list
           anchorPoints: (coord * char) list
           usedTile: Map<coord, char> }
 
-    let mkState b d pn h n map isMyTurn initPlayerList =
+    let mkState b d pn h map isMyTurn initPlayerList =
         { board = b
           dict = d
           playerNumber = pn
           hand = h
           myTurn = isMyTurn
-          numberOfPlayers = n
           remainingPlayers = initPlayerList
           anchorPoints = []
           usedTile = map }
@@ -296,7 +294,6 @@ module Scrabble =
     let playGame cstream pieces (st: State.state) =
 
         let rec aux (st: State.state) =
-            Print.printHand pieces (State.hand st)
 
             // Check if it is our turn
             if st.myTurn then
@@ -342,7 +339,6 @@ module Scrabble =
                       dict = st.dict // doesn't change
                       hand = newHand // correct
                       myTurn = shouldPlay st.playerNumber st.remainingPlayers st.playerNumber
-                      numberOfPlayers = st.numberOfPlayers // doesn't change
                       remainingPlayers = st.remainingPlayers // doesn't change
                       anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // correct
                       usedTile = State.calculateNewUsedTiles st.usedTile ms } // This state needs to be updated
@@ -357,7 +353,6 @@ module Scrabble =
                       dict = st.dict // do not update
                       hand = st.hand // do not update
                       myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
-                      numberOfPlayers = st.numberOfPlayers
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // Update this with new play
                       usedTile = State.calculateNewUsedTiles st.usedTile ms // Do update
@@ -374,23 +369,6 @@ module Scrabble =
                       dict = st.dict
                       hand = newHand
                       myTurn = shouldPlay st.playerNumber st.remainingPlayers st.playerNumber
-                      numberOfPlayers = st.numberOfPlayers
-                      remainingPlayers = st.remainingPlayers
-                      anchorPoints = st.anchorPoints
-                      usedTile = st.usedTile }
-
-                aux st'
-            | RCM(CMPlayFailed(pid, _)) ->
-                (* Failed play. Update your state *)
-                send cstream (SMForfeit) // TODO: Remove
-
-                let st': State.state =
-                    { playerNumber = st.playerNumber
-                      board = st.board
-                      dict = st.dict
-                      hand = st.hand
-                      myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
-                      numberOfPlayers = st.numberOfPlayers
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile }
@@ -410,13 +388,14 @@ module Scrabble =
                       dict = st.dict
                       hand = st.hand
                       myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
-                      numberOfPlayers = st.numberOfPlayers
                       remainingPlayers = remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile }
 
                 aux st'
-            | RCM(CMPassed(pid)) ->
+            | RCM(CMPlayFailed(pid, _))
+            | RCM(CMPassed(pid))
+            | RCM(CMChange(pid, _)) ->
 
                 let st': State.state =
                     { playerNumber = st.playerNumber
@@ -424,7 +403,6 @@ module Scrabble =
                       dict = st.dict
                       hand = st.hand
                       myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
-                      numberOfPlayers = st.numberOfPlayers
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile }
@@ -492,7 +470,4 @@ module Scrabble =
         let initPlayerList = [ 1u .. numPlayers ]
 
         fun () ->
-            playGame
-                cstream
-                tiles
-                (State.mkState board dict playerNumber handSet numPlayers Map.empty isMyTurn initPlayerList)
+            playGame cstream tiles (State.mkState board dict playerNumber handSet Map.empty isMyTurn initPlayerList)
