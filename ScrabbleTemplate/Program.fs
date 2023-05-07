@@ -38,7 +38,7 @@ let main argv =
     //    let board      = ScrabbleUtil.HoleBoard.holeBoard ()
     //    let board      = ScrabbleUtil.InfiniteHoleBoard.infiniteHoleBoard ()
 
-    let words = readLines "Dictionaries/English.txt"
+    let words = readLines "../../../Dictionaries/English.txt"
 
     let handSize = 7u
     let timeout = None
@@ -56,17 +56,12 @@ let main argv =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
     let players =
-        [ ("QWERTY_Quitters 1", dictionary, QWERTY_Quitters.Scrabble.startGame)
-          ("QWERTY_Quitters 2", dictionary, QWERTY_Quitters.Scrabble.startGame)
-          ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)
-          ]
+        spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
+        @ // Change last 5 to the number of players to play with
+        [ ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame) ]
     // let players =
     //    spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
-
-    (* 
-    let players =
-        spawnMultiples "OxyphenButazone" dictionary Oxyphenbutazone.Scrabble.startGame 2
-    *)
+    // Play against self (2 players in total())
 
 
     do ScrabbleServer.Comm.startGame board dictionary handSize timeout tiles seed port players

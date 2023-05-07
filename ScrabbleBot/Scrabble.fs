@@ -35,43 +35,39 @@ module RegEx =
 module Print =
     let printHand pieces hand =
         hand
-        |> MultiSet.fold (fun _ x i -> forcePrint (sprintf "%d -> (%A, %d)\n" x (Map.find x pieces) i)) ()
+        |> MultiSet.fold (fun _ x i -> debugPrint (sprintf "%d -> (%A, %d)\n" x (Map.find x pieces) i)) ()
 
 module State =
     // Make sure to keep your state localised in this module. It makes your life a whole lot easier.
-    
+
     type state =
         { board: Parser.board
           dict: Dictionary.Dict
           playerNumber: uint32
           hand: MultiSet.MultiSet<uint32>
           myTurn: bool
-          numberOfPlayers: uint32
-          anchorPoints : (coord * char) list
+          remainingPlayers: uint32 list
+          anchorPoints: (coord * char) list
           usedTile: Map<coord, char> }
 
-    let mkState b d pn h n map isMyTurn =
+    let mkState b d pn h map isMyTurn initPlayerList =
         { board = b
           dict = d
           playerNumber = pn
           hand = h
           myTurn = isMyTurn
-          numberOfPlayers = n 
-          anchorPoints = [] 
+          remainingPlayers = initPlayerList
+          anchorPoints = []
           usedTile = map }
 
     let calculateNewAnchorPoints oldAnchorPoints moves =
-        List.fold
-            (fun acc (coord, (_, (char, _))) -> (coord, char) :: acc)
-            oldAnchorPoints
-            moves
+        List.fold (fun acc (coord, (_, (char, _))) -> (coord, char) :: acc) oldAnchorPoints moves
 
     let calculateNewUsedTiles oldUsedTiles moves =
         List.foldBack
             (fun el acc ->
                 match el with
-                | (coord, (_, (char, _))) -> 
-                    Map.add coord char acc )
+                | (coord, (_, (char, _))) -> Map.add coord char acc)
             moves
             oldUsedTiles
 
@@ -83,44 +79,48 @@ module State =
 
 module Scrabble =
     open MultiSet
+    open System.Collections.Generic
+
+    let shouldPlay pid remainingplayers ownplayernumber =
+        // Find index of pid
+        // Find pid of index+1
+        // Compare pid of index+1 with own playernumber
+        // Also make sure to handle if pid = last remaining player
+        let index = List.findIndex (fun x -> x = pid) remainingplayers
+
+        let temp = List.length remainingplayers
+
+        let temp2 = uint32 temp
+
+        let nextPlayer =
+            List.item (((index + 1) % List.length remainingplayers)) remainingplayers
+
+        nextPlayer = ownplayernumber
 
     let usedTile coord map =
         let opt = Map.tryFind coord map
+
         match opt with
         | Some _ -> true
         | None -> false
 
-    let findPlayCoords usedTilesMap ((initialX, initialY), letters) = 
-        let rec aux (shouldGoRight : bool) x y (remainingLetters) acc =
-            if
-                List.isEmpty remainingLetters
-            then
+    let findPlayCoords usedTilesMap (isBuildingRight, ((initialX, initialY), letters)) =
+        let rec aux (shouldGoRight: bool) x y (remainingLetters) acc =
+            if List.isEmpty remainingLetters then
                 acc
             else
-                let (nextX, nextY) =
-                    if shouldGoRight then (x + 1, y)
-                    else (x, y + 1)
+                let (nextX, nextY) = if shouldGoRight then (x + 1, y) else (x, y + 1)
                 // Tile with coordinates appended on the back of the accumulator
-                aux shouldGoRight nextX nextY remainingLetters.Tail (acc @ ([(nextX, nextY), (List.head remainingLetters)]))
+                aux
+                    shouldGoRight
+                    nextX
+                    nextY
+                    remainingLetters.Tail
+                    (acc @ ([ (nextX, nextY), (List.head remainingLetters) ]))
 
         let reversed = List.rev letters
-        
-        if usedTile (initialX, initialY) usedTilesMap
-        then 
-            if usedTile (initialX - 1, initialY) usedTilesMap // Check direction and add one to coordinate
-            then 
-                // forcePrint "trying to go down"
-                aux false initialX (initialY) reversed List.empty // go down
-            else 
-                // forcePrint "trying to go right"
-                aux true (initialX) initialY reversed List.empty // go right
-        else aux true initialX initialY reversed List.empty // Base case: First word of the game - go right
-        
-    let decidePlay words folder _
-        =
-        // Use folder (function) to determine which word is the best
-        // pieces will be used if the folder starts requiring to know the characters on the tiles
-        MultiSet.foldBack folder words []
+
+        aux isBuildingRight initialX initialY reversed List.empty
 
     let rec findPlay
         (hand: MultiSet.MultiSet<uint32>)
@@ -128,15 +128,11 @@ module Scrabble =
         (trie: Dictionary.Dict)
         (coord: coord)
         folder
-//        (initialTile: char)
         =
         // Use Dictionary.step to go recursively through the trie we have (This uses our implementation of Trie.step)
         // Hand contains a set of integers which we need to use Map.find on the pieces Map to figure out what letter they represent
         // Preferably, we find longer words (this makes it easier to complete a game)
         // To do so, we should step through the Trie and add all results to a list and find the longest word of these and return it
-        // Otherwise use some sort of continuation to find a legal word and then continue and if a longer word is found, use this instead
-        // We should handle two cases: One where the first letter is pre-determined and one where it is not (if we start the game or not)
-        // One way to handle this is to call this method after the step method for the first letter
 
         let rec aux // This returns a MultiSet of options, where an option is a list of uint32 representing tileIDs for a given word
             (currHand: MultiSet<uint32>)
@@ -160,7 +156,7 @@ module Scrabble =
 
                                 // Step into next trie node
                                 let subTrieOption = Dictionary.step nextChar currTrie
-                        
+
                                 match subTrieOption with
                                 // If the current node of the trie exists, then it is "Some"
                                 | Some(isWord, subTrie) ->
@@ -187,110 +183,166 @@ module Scrabble =
                             nextTile)
                     cont // TODO This need to change
                     currHand
+
         let possibleWords = aux hand trie [] empty
 
-        (coord, decidePlay possibleWords folder pieces)
+        // AKA decidePlay ⬇️
+        (coord, snd (MultiSet.foldBack folder possibleWords (0, [])))
 
-    let shouldBuildRight (x, y) usedTilesMap =
-       if usedTile (x - 1, y) usedTilesMap // Check direction and add one to coordinate
-            then 
-                false // go down
-            else 
-                true // go right 
-
-    let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight
-        =
+    // bestPlayFolder erstatter longestWordFolder som vi giver med i findplay funktionen
+    //Men der den korrekt? ved ikke om det jeg har skrevet giver mening
+    //ved ikke om det jeg hatr skrevet giver mening tho
+    // folderen skal helst gives med i play game (vores aux funktion også kaldet main function)
+    //Skal den så ikke være udenfor findplay sorry. Den skal vel også bruges i findPlayFromAnchorPoint
+    // udenfor decideplay? Vi bruger ikke længere decideplay decideplay koden er blevet hevet ind i findPlay. Altså er koden under kommentaren med decidePlay
+    let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight =
         let isIllegalPlay (x, y) =
-            usedTile (x, y) currentTiles || // check current
-            usedTile (x+1, y) currentTiles || // check right
-            usedTile (x, y+1) currentTiles || // check down
-            if isBuildingRight
-                then usedTile (x, y-1) currentTiles // check up
-                else usedTile (x-1, y) currentTiles // check left
-        if wordLength > 8 // don't continue further than 9 letter words
-            then wordLength
-            else if
-                (if isBuildingRight
-                    then isIllegalPlay (x+1, y)
-                    else isIllegalPlay (x, y+1))
-                then wordLength
-                else if isBuildingRight 
-                    then maxLengthOfWord currentTiles (x+1, y) (wordLength+1) isBuildingRight // continue right
-                    else maxLengthOfWord currentTiles (x, y+1) (wordLength+1) isBuildingRight  // continue down
-                
+            usedTile (x, y) currentTiles
+            || // check current
+            usedTile (x + 1, y) currentTiles
+            || usedTile // check right
+                (x, y + 1)
+                currentTiles
+            || if // check down
+                   isBuildingRight
+               then
+                   usedTile (x, y - 1) currentTiles // check up
+               else
+                   usedTile (x - 1, y) currentTiles // check left
+
+        if
+            wordLength > 8 // don't continue further than 9 letter words
+        then
+            wordLength
+        else if
+            (if isBuildingRight then
+                 isIllegalPlay (x + 1, y)
+             else
+                 isIllegalPlay (x, y + 1))
+        then
+            wordLength
+        else if isBuildingRight then
+            maxLengthOfWord currentTiles (x + 1, y) (wordLength + 1) isBuildingRight // continue right
+        else
+            maxLengthOfWord currentTiles (x, y + 1) (wordLength + 1) isBuildingRight // continue down
+
+    let rec findPrefix (usedTiles: Map<coord, char>) ((x, y): coord) (isBuildingRight: bool) cont =
+        let prefix = Map.tryFind (x, y) usedTiles
+
+        match prefix with
+        | Some char ->
+            findPrefix usedTiles (if isBuildingRight then (x - 1, y) else (x, y - 1)) isBuildingRight (char :: cont)
+        | None -> cont
 
     let findPlayFromAnchorPoint
         (anchorpoints: (coord * char) list)
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
-        (usedTiles: Map<coord,char>) =
+        (usedTiles: Map<coord, char>)
+        =
         let rec aux anchorpoints =
             match anchorpoints with
-            | [] -> 
-                forcePrint "There was not found any legal plays"
-                ((0, 0), [])
-            | (coord, char) :: tail -> 
-            
-                let maxLengthOfWord = 
-                    shouldBuildRight coord usedTiles |> maxLengthOfWord usedTiles coord 0
-                
-                let folder = (fun element _ currentBestWord -> 
-                    if (List.length element) > (List.length currentBestWord) && 
-                       (List.length element <= maxLengthOfWord)
-                    then element 
-                    else currentBestWord)
+            | [] ->
+                // There was not found any legal plays. This will cause our Bot to request changing tiles.
+                (false, ((0, 0), ([])))
+            | (coord, char) :: tail ->
+                let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true
+                let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false
 
-                let initialTrieOption = Dictionary.step char trie
+                let maxLengthOfWord =
+                    if maxLengthOfWordRight > maxLengthOfWordDown then
+                        (true, maxLengthOfWordRight)
+                    else
+                        (false, maxLengthOfWordDown)
 
-                match initialTrieOption with
-                | Some(isWord, subTrie) ->
-                    let play = findPlay hand pieces subTrie coord folder
-                    if List.length (snd play) = 0
-                        then aux tail
-                        else play
+                // Similar to find best play folder but also takes maxlengthofword into account
+                let folder =
+                    (fun (el) _ (currentbestvalue, currentBestWord) ->
+                        let pointvaluefromelement =
+                            List.fold (fun totalpointvalue (id, (char, pv)) -> totalpointvalue + pv) 0 el
+
+                        if
+                            pointvaluefromelement > currentbestvalue
+                            && List.length el < (snd maxLengthOfWord)
+                        then
+                            (pointvaluefromelement, el)
+                        else
+                            (currentbestvalue, currentBestWord))
+
+                let prefix = findPrefix usedTiles coord (fst maxLengthOfWord) []
+
+                let initialTrieOption = Dictionary.step prefix.Head trie
+
+                let initialTrie =
+                    List.fold
+                        (fun subtrieOption ch ->
+                            match subtrieOption with
+                            | Some(_, subtrie) -> Dictionary.step ch subtrie
+                            | None -> None)
+                        initialTrieOption
+                        prefix.Tail
+
+                match initialTrie with
+                | Some(isWord, trie) ->
+                    let play = findPlay hand pieces trie coord folder
+                    let bool = fst maxLengthOfWord
+
+                    if List.length (snd play) = 0 then
+                        aux tail
+                    else
+                        (bool, (fst play, snd play))
                 | None -> aux tail
+
         aux anchorpoints
 
 
     let playGame cstream pieces (st: State.state) =
 
         let rec aux (st: State.state) =
-            Print.printHand pieces (State.hand st)
 
             // Check if it is our turn
             if st.myTurn then
                 // some logic that figures out the next play
-                let findLongestWord = (fun element _ currentBestWord -> 
-                    if (List.length element) > (List.length currentBestWord)
-                    then element 
-                    else currentBestWord)
 
-                let play = 
-                    if List.isEmpty st.anchorPoints
-                    then findPlay st.hand pieces st.dict (-1, 0) findLongestWord // This is the first play of the game, anchor point needed = hardcode (-1, 0)
+
+                let findLongestWordFolder =
+                    (fun (element) _ currentBestWord ->
+                        if (List.length element) > (List.length currentBestWord) then
+                            element
+                        else
+                            currentBestWord)
+
+                let findBestWordFolder =
+                    (fun (el) _ (currentbestvalue, currentBestWord) ->
+                        let pointvaluefromelement =
+                            List.fold (fun totalpointvalue (id, (char, pv)) -> totalpointvalue + pv) 0 el
+
+                        if pointvaluefromelement > currentbestvalue then
+                            (pointvaluefromelement, el)
+                        else
+                            (currentbestvalue, currentBestWord))
+
+                let play =
+                    if List.isEmpty st.anchorPoints then
+                        (true, findPlay st.hand pieces st.dict (-1, 0) findBestWordFolder) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
                     else
                         findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
 
-                if List.isEmpty (snd play)
-                    then
-                        send cstream (SMChange (MultiSet.toList st.hand)) // Change whole hand
-                    else                    
-                        let playWithCoords = findPlayCoords st.usedTile play
-                        send cstream (SMPlay playWithCoords)
+                if List.isEmpty (snd (snd play)) then
+                    send cstream (SMChange(MultiSet.toList st.hand)) // Change whole hand
+                else
+                    let playWithCoords = findPlayCoords st.usedTile play
+                    send cstream (SMPlay playWithCoords)
 
             let msg = recv cstream
 
             match msg with
             | RCM(CMPlaySuccess(ms, points, newPieces)) ->
                 (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
-                forcePrint (sprintf "MS my turn: %A" ms)
-                
                 // Hand:
-                let usedIds = 
-                    List.foldBack (fun (_, (tileId, _)) acc -> MultiSet.addSingle tileId acc)
-                        ms
-                        MultiSet.empty
+                let usedIds =
+                    List.foldBack (fun (_, (tileId, _)) acc -> MultiSet.addSingle tileId acc) ms MultiSet.empty
 
                 // Remove the last played pieces from current hand state
                 let handWithoutUsedPieces = MultiSet.subtract st.hand usedIds
@@ -304,8 +356,8 @@ module Scrabble =
                       board = st.board // I don't think this should change
                       dict = st.dict // doesn't change
                       hand = newHand // correct
-                      myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
-                      numberOfPlayers = st.numberOfPlayers // doesn't change
+                      myTurn = shouldPlay st.playerNumber st.remainingPlayers st.playerNumber
+                      remainingPlayers = st.remainingPlayers // doesn't change
                       anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // correct
                       usedTile = State.calculateNewUsedTiles st.usedTile ms } // This state needs to be updated
 
@@ -313,73 +365,86 @@ module Scrabble =
             | RCM(CMPlayed(pid, ms, points)) ->
                 (* Successful play by other player. Update your state *)
 
-                forcePrint (sprintf "Next player: %A\n" (pid + 1u))
-                forcePrint (sprintf "Number of players: %A\n" st.numberOfPlayers)
-                forcePrint (sprintf "Next player modulo: %A\n" (pid % st.numberOfPlayers))
-                forcePrint (sprintf "My player id: %A\n" st.playerNumber)
-                forcePrint (sprintf "MyTurn calculation: %A" ((pid % st.numberOfPlayers) = st.playerNumber))
-
                 let st': State.state =
                     { playerNumber = st.playerNumber
                       board = st.board // do not update
                       dict = st.dict // do not update
                       hand = st.hand // do not update
-                      myTurn = (1u + (pid % st.numberOfPlayers)) = st.playerNumber
-                      numberOfPlayers = st.numberOfPlayers 
+                      myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
+                      remainingPlayers = st.remainingPlayers
                       anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // Update this with new play
                       usedTile = State.calculateNewUsedTiles st.usedTile ms // Do update
-                      }
-                aux st'
-            | RCM(CMChangeSuccess newPieces) ->
-                let newHand = List.foldBack (fun (x, cnt) acc -> MultiSet.add x cnt acc) newPieces MultiSet.empty
-                // Assume whole hand is changed
-                let st': State.state = {
-                    playerNumber = st.playerNumber
-                    board = st.board
-                    dict = st.dict
-                    hand = newHand
-                    myTurn = if st.numberOfPlayers <> 1u then false else true // single player game should continue to be my turn
-                    numberOfPlayers = st.numberOfPlayers
-                    anchorPoints = st.anchorPoints 
-                    usedTile = st.usedTile 
-                }
+                    }
 
                 aux st'
-            | RCM(CMPlayFailed(pid, _)) ->
-                (* Failed play. Update your state *)
-                send cstream (SMForfeit) // TODO: Remove
+            | RCM(CMChangeSuccess newPieces) ->
+                let newHand =
+                    List.foldBack (fun (x, cnt) acc -> MultiSet.add x cnt acc) newPieces MultiSet.empty
+                // Assume whole hand is changed
+                let st': State.state =
+                    { playerNumber = st.playerNumber
+                      board = st.board
+                      dict = st.dict
+                      hand = newHand
+                      myTurn = shouldPlay st.playerNumber st.remainingPlayers st.playerNumber
+                      remainingPlayers = st.remainingPlayers
+                      anchorPoints = st.anchorPoints
+                      usedTile = st.usedTile }
+
+                aux st'
+            | RCM(CMGameOver _) -> ()
+            | RCM(CMForfeit(pid)) ->
+                // When a player has forfeitted they should be removed from remainingPlayers list
+                let index = List.findIndex (fun x -> x = pid) st.remainingPlayers
+                let remainingPlayers = List.removeAt index st.remainingPlayers
+
+                forcePrint (sprintf "Player %d has forfeitted\n" pid)
+
                 let st': State.state =
                     { playerNumber = st.playerNumber
                       board = st.board
                       dict = st.dict
                       hand = st.hand
-                      myTurn =
-                        if ((pid + 1u) % st.numberOfPlayers = st.playerNumber) then
-                            true
-                        else
-                            false
-                      numberOfPlayers = st.numberOfPlayers
-                      anchorPoints = st.anchorPoints 
+                      myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
+                      remainingPlayers = remainingPlayers
+                      anchorPoints = st.anchorPoints
                       usedTile = st.usedTile }
 
                 aux st'
-            | RCM(CMGameOver _) -> ()
-            | RCM a -> failwith (sprintf "not implmented: %A" a)
-            // | RGPE(GPENotEnoughPieces) ->
-            //     send cstream SMPass
-            //     send cstream SMPass
-            //     send cstream SMPass
+            | RCM(CMPlayFailed(pid, _))
+            | RCM(CMPassed(pid))
+            | RCM(CMChange(pid, _)) ->
+
+                let st': State.state =
+                    { playerNumber = st.playerNumber
+                      board = st.board
+                      dict = st.dict
+                      hand = st.hand
+                      myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
+                      remainingPlayers = st.remainingPlayers
+                      anchorPoints = st.anchorPoints
+                      usedTile = st.usedTile }
+
+                aux st'
+
+            | RCM a ->
+                failwith (
+                    sprintf
+                        "not implemented: %A for PID: %A who played in order %A"
+                        a
+                        st.playerNumber
+                        st.remainingPlayers
+                )
             | RGPE err ->
                 match List.head err with
-                | GPENotEnoughPieces (_, piecesLeft) -> 
-                    forcePrint "\n\nPrinting remaining hand:\n"
+                | GPENotEnoughPieces(_, piecesLeft) ->
+                    debugPrint "\n\nPrinting remaining hand:\n"
                     Print.printHand pieces st.hand
-                    forcePrint "-----------------\n"
 
                     send cstream SMPass
                     send cstream SMPass
                     send cstream SMPass
-                | err -> 
+                | err ->
                     printfn "Gameplay Error:\n%A" err
                     aux st
 
@@ -412,8 +477,7 @@ module Scrabble =
         )
 
         //let dict = dictf true // Uncomment if using a gaddag for your dictionary
-        // let dict = dictf false // Uncomment if using a trie for your dictionary
-        let dict = dictf false
+        let dict = dictf false // Uncomment if using a trie for your dictionary
 
         let board = Parser.mkBoard boardP
 
@@ -421,4 +485,7 @@ module Scrabble =
 
         let isMyTurn = playerNumber = playerTurn
 
-        fun () -> playGame cstream tiles (State.mkState board dict playerNumber handSet numPlayers Map.empty isMyTurn)
+        let initPlayerList = [ 1u .. numPlayers ]
+
+        fun () ->
+            playGame cstream tiles (State.mkState board dict playerNumber handSet Map.empty isMyTurn initPlayerList)
