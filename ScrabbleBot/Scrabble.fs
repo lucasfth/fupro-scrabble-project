@@ -122,11 +122,6 @@ module Scrabble =
 
         aux isBuildingRight initialX initialY reversed List.empty
 
-    let decidePlay words folder _ =
-        // Use folder (function) to determine which word is the best
-        // pieces will be used if the folder starts requiring to know the characters on the tiles
-        MultiSet.foldBack folder words []
-
     let rec findPlay
         (hand: MultiSet.MultiSet<uint32>)
         (pieces: Map<uint32, tile>)
@@ -191,8 +186,15 @@ module Scrabble =
 
         let possibleWords = aux hand trie [] empty
 
-        (coord, decidePlay possibleWords folder pieces)
+        // AKA decidePlay ⬇️
+        (coord, snd (MultiSet.foldBack folder possibleWords (0, [])))
 
+    // bestPlayFolder erstatter longestWordFolder som vi giver med i findplay funktionen
+    //Men der den korrekt? ved ikke om det jeg har skrevet giver mening
+    //ved ikke om det jeg hatr skrevet giver mening tho
+    // folderen skal helst gives med i play game (vores aux funktion også kaldet main function)
+    //Skal den så ikke være udenfor findplay sorry. Den skal vel også bruges i findPlayFromAnchorPoint
+    // udenfor decideplay? Vi bruger ikke længere decideplay decideplay koden er blevet hevet ind i findPlay. Altså er koden under kommentaren med decidePlay
     let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight =
         let isIllegalPlay (x, y) =
             usedTile (x, y) currentTiles
@@ -243,7 +245,7 @@ module Scrabble =
             match anchorpoints with
             | [] ->
                 // There was not found any legal plays. This will cause our Bot to request changing tiles.
-                (false, ((0, 0), []))
+                (false, ((0, 0), ([])))
             | (coord, char) :: tail ->
                 let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true
                 let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false
@@ -254,15 +256,19 @@ module Scrabble =
                     else
                         (false, maxLengthOfWordDown)
 
+                // Similar to find best play folder but also takes maxlengthofword into account
                 let folder =
-                    (fun element _ currentBestWord ->
+                    (fun (el) _ (currentbestvalue, currentBestWord) ->
+                        let pointvaluefromelement =
+                            List.fold (fun totalpointvalue (id, (char, pv)) -> totalpointvalue + pv) 0 el
+
                         if
-                            (List.length element) > (List.length currentBestWord)
-                            && (List.length element <= snd maxLengthOfWord)
+                            pointvaluefromelement > currentbestvalue
+                            && List.length el < (snd maxLengthOfWord)
                         then
-                            element
+                            (pointvaluefromelement, el)
                         else
-                            currentBestWord)
+                            (currentbestvalue, currentBestWord))
 
                 let prefix = findPrefix usedTiles coord (fst maxLengthOfWord) []
 
@@ -285,7 +291,7 @@ module Scrabble =
                     if List.length (snd play) = 0 then
                         aux tail
                     else
-                        (bool, play)
+                        (bool, (fst play, snd play))
                 | None -> aux tail
 
         aux anchorpoints
@@ -298,16 +304,28 @@ module Scrabble =
             // Check if it is our turn
             if st.myTurn then
                 // some logic that figures out the next play
-                let findLongestWord =
-                    (fun element _ currentBestWord ->
+
+
+                let findLongestWordFolder =
+                    (fun (element) _ currentBestWord ->
                         if (List.length element) > (List.length currentBestWord) then
                             element
                         else
                             currentBestWord)
 
+                let findBestWordFolder =
+                    (fun (el) _ (currentbestvalue, currentBestWord) ->
+                        let pointvaluefromelement =
+                            List.fold (fun totalpointvalue (id, (char, pv)) -> totalpointvalue + pv) 0 el
+
+                        if pointvaluefromelement > currentbestvalue then
+                            (pointvaluefromelement, el)
+                        else
+                            (currentbestvalue, currentBestWord))
+
                 let play =
                     if List.isEmpty st.anchorPoints then
-                        (true, findPlay st.hand pieces st.dict (-1, 0) findLongestWord) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
+                        (true, findPlay st.hand pieces st.dict (-1, 0) findBestWordFolder) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
                     else
                         findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
 
