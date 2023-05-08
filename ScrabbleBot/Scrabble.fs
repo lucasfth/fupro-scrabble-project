@@ -241,11 +241,12 @@ module Scrabble =
         (trie: Dictionary.Dict)
         (usedTiles: Map<coord, char>)
         =
-        let rec aux anchorpoints =
+        let rec aux anchorpoints (acc: (bool * ((int * int) * (uint32 * (char * int)) list)) list) =
             match anchorpoints with
             | [] ->
                 // There was not found any legal plays. This will cause our Bot to request changing tiles.
-                (false, ((0, 0), ([])))
+                acc
+            // [ (false, ((0, 0), ([]))) ]
             | (coord, char) :: tail ->
                 let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true
                 let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false
@@ -286,16 +287,29 @@ module Scrabble =
                 match initialTrie with
                 | Some(isWord, trie) ->
                     let play = findPlay hand pieces trie coord folder
-                    let bool = fst maxLengthOfWord
+                    let shouldPlayRight = fst maxLengthOfWord
 
                     if List.length (snd play) = 0 then
-                        aux tail
+                        aux tail acc
                     else
-                        (bool, (fst play, snd play))
-                | None -> aux tail
+                        aux tail ((shouldPlayRight, (fst play, snd play)) :: acc)
+                | None -> aux tail acc
 
-        aux anchorpoints
+        let bestPlayFromEachAnchorpoint: (bool * (coord * (uint32 * (char * int)) list)) list =
+            aux anchorpoints []
 
+        let ourFolder =
+            (fun el (currentBestValue, currentBestWord) ->
+
+                let pointValueFromElement =
+                    List.fold (fun totalpointvalue (id, (char, pv)) -> totalpointvalue + pv) 0 (snd (snd el))
+
+                if pointValueFromElement > currentBestValue then
+                    (pointValueFromElement, el)
+                else
+                    (currentBestValue, currentBestWord))
+
+        snd (List.foldBack ourFolder bestPlayFromEachAnchorpoint (0, (false, ((0, 0), ([])))))
 
     let playGame cstream pieces (st: State.state) =
 
@@ -397,8 +411,6 @@ module Scrabble =
                 // When a player has forfeitted they should be removed from remainingPlayers list
                 let index = List.findIndex (fun x -> x = pid) st.remainingPlayers
                 let remainingPlayers = List.removeAt index st.remainingPlayers
-
-                forcePrint (sprintf "Player %d has forfeitted\n" pid)
 
                 let st': State.state =
                     { playerNumber = st.playerNumber
