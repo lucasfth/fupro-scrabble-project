@@ -43,7 +43,7 @@ let main argv =
     let handSize = 7u
     let timeout = None
     let tiles = ScrabbleUtil.English.tiles 1u
-    let seed = None
+    let seed = Some 1235
     let port = 13001
 
     let dictAPI =
@@ -56,9 +56,9 @@ let main argv =
         time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
 
     let players =
-        spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
+        spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 1
         @ // Change last 5 to the number of players to play with
-        [ ("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame) ]
+        spawnMultiples "OxyphenButazone" dictionary Oxyphenbutazone.Scrabble.startGame 1
     // let players =
     //    spawnMultiples "QWERTY_Quitters" dictionary QWERTY_Quitters.Scrabble.startGame 2
     // Play against self (2 players in total())
