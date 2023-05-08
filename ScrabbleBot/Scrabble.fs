@@ -331,7 +331,7 @@ module Scrabble =
                     else
                         findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
 
-                if List.isEmpty (snd (snd play)) || st.playerNumber = 1u then
+                if List.isEmpty (snd (snd play)) then
                     if size st.hand > (uint32 st.tilesRemaining) then
                         let rec aux lst =
                             match lst with
