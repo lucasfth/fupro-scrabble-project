@@ -15,6 +15,7 @@ type word = Eval.word
 type squareFun = Eval.squareFun
 type square = Map<int, squareFun>
 type boardFun2 = coord -> Result<square option, Error>
+
 type board =
     { center: coord
       defaultSquare: square
@@ -117,29 +118,22 @@ let stmntParse = pstring "not implemented"
 
 
 // Probably wrong implementation but this is not used until we implement the correct (non-necessary) mkBoard
-let parseSquareProg (sqp : squareProg) : square = 
-    sqp |> Map.map (
-        fun a b -> (run stmntParse >> getSuccess >> stmntToSquareFun) b
-        )
+let parseSquareProg (sqp: squareProg) : square =
+    sqp |> Map.map (fun a b -> (run stmntParse >> getSuccess >> stmntToSquareFun) b)
 
 let parseBoardProg = run stmntParse >> getSuccess >> stmntToBoardFun
 
-
 // makes a standard shitty board
-let mkBoard (bp : boardProg) : board =
-    {
-        center = (0, 0);
-        defaultSquare = Map.empty;
-        squares = fun _ -> Success (Some Map.empty);
-    }
-(*
+let mkBoard (bp: boardProg) : board =
+    { center = (0, 0)
+      defaultSquare = Map.empty
+      squares = fun _ -> Success(Some Map.empty) }
 
+(*
 let mkBoard (bp: boardProg) =
-    {
-        center = bp.center
-        defaultSquare = Map.find bp.usedSquare bp.squares |> parseSquareProg
-        squares =
-         let m' = Map.map (fun _ m -> parseSquareProg m) bp.squares
-         parseBoardProg bp.prog m'
-    }
+    { center = bp.center
+      defaultSquare = Map.find bp.usedSquare bp.squares |> parseSquareProg
+      squares =
+        let m' = Map.map (fun _ m -> parseSquareProg m) bp.squares
+        parseBoardProg bp.prog m' }
 *)

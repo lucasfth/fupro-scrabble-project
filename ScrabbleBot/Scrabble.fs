@@ -192,14 +192,17 @@ module Scrabble =
     // folderen skal helst gives med i play game (vores aux funktion også kaldet main function)
     //Skal den så ikke være udenfor findplay sorry. Den skal vel også bruges i findPlayFromAnchorPoint
     // udenfor decideplay? Vi bruger ikke længere decideplay decideplay koden er blevet hevet ind i findPlay. Altså er koden under kommentaren med decidePlay
-    let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight =
+    let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight (state: State.state) =
         let isIllegalPlay (x, y) =
-            usedTile (x, y) currentTiles
-            || // check current
-            usedTile (x + 1, y) currentTiles
-            || usedTile // check right
-                (x, y + 1)
-                currentTiles
+            let temp =
+                match state.board.squares (x, y) with
+                | StateMonad.Result.Success(Some v) -> false
+                | StateMonad.Result.Success(None) -> true
+                | StateMonad.Result.Failure(err) -> true
+
+            usedTile (x, y) currentTiles // check current
+            || usedTile (x + 1, y) currentTiles // check right
+            || usedTile (x, y + 1) currentTiles // check down
             || if // check down
                    isBuildingRight
                then
@@ -219,9 +222,9 @@ module Scrabble =
         then
             wordLength
         else if isBuildingRight then
-            maxLengthOfWord currentTiles (x + 1, y) (wordLength + 1) isBuildingRight // continue right
+            maxLengthOfWord currentTiles (x + 1, y) (wordLength + 1) isBuildingRight state // continue right
         else
-            maxLengthOfWord currentTiles (x, y + 1) (wordLength + 1) isBuildingRight // continue down
+            maxLengthOfWord currentTiles (x, y + 1) (wordLength + 1) isBuildingRight state // continue down
 
     let rec findPrefix (usedTiles: Map<coord, char>) ((x, y): coord) (isBuildingRight: bool) cont =
         let prefix = Map.tryFind (x, y) usedTiles
@@ -237,6 +240,7 @@ module Scrabble =
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
         (usedTiles: Map<coord, char>)
+        state
         =
         let rec aux anchorpoints acc =
             match anchorpoints with
@@ -245,8 +249,8 @@ module Scrabble =
                 acc
             // [ (false, ((0, 0), ([]))) ]
             | (coord, _) :: tail ->
-                let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true
-                let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false
+                let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true state
+                let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false state
 
                 let maxLengthOfWord =
                     if maxLengthOfWordRight > maxLengthOfWordDown then
@@ -311,6 +315,9 @@ module Scrabble =
     let playGame cstream pieces (st: State.state) =
         let rec aux (st: State.state) =
 
+            let temp = st.board.squares (15, 15)
+            forcePrint (sprintf "Test: %A\n" temp)
+
             // Check if it is our turn
             if st.myTurn then
                 // some logic that figures out the next play
@@ -327,11 +334,17 @@ module Scrabble =
 
                 let play =
                     if List.isEmpty st.anchorPoints then
-                        (true, findPlay st.hand pieces st.dict (-1, 0) findBestWordFolder) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
+                        (true,
+                         findPlay
+                             st.hand
+                             pieces
+                             st.dict
+                             ((fst st.board.center) - 1, (snd st.board.center)) // handle off-centered boards
+                             findBestWordFolder) // This is the first play of the game, no anchor point needed
                     else
-                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
+                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile st // Anchor point needed
 
-                if List.isEmpty (snd (snd play)) || st.playerNumber = 1u then
+                if List.isEmpty (snd (snd play)) then
                     if size st.hand > (uint32 st.tilesRemaining) then
                         let rec aux lst =
                             match lst with
@@ -514,7 +527,7 @@ module Scrabble =
         let initPlayerList = [ 1u .. numPlayers ]
 
         let numTiles = 104u - (7u * numPlayers)
-        let temp: Parser.square = (board.defaultSquare)
+        let temp = ScrabbleLib.parseSimpleBoardProg
 
         fun () ->
             playGame
