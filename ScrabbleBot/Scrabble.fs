@@ -49,9 +49,10 @@ module State =
           remainingPlayers: uint32 list
           anchorPoints: (coord * char) list
           usedTile: Map<coord, char>
-          tilesRemaining: int }
+          tilesRemaining: int 
+          squares: (coord -> bool) }
 
-    let mkState b d pn h map isMyTurn initPlayerList k =
+    let mkState b d pn h map isMyTurn initPlayerList k squares =
         { board = b
           dict = d
           playerNumber = pn
@@ -60,7 +61,8 @@ module State =
           remainingPlayers = initPlayerList
           anchorPoints = []
           usedTile = map
-          tilesRemaining = k }
+          tilesRemaining = k 
+          squares = squares }
 
     let calculateNewAnchorPoints oldAnchorPoints moves =
         List.fold (fun acc (coord, (_, (char, _))) -> (coord, char) :: acc) oldAnchorPoints moves
@@ -192,14 +194,12 @@ module Scrabble =
     // folderen skal helst gives med i play game (vores aux funktion også kaldet main function)
     //Skal den så ikke være udenfor findplay sorry. Den skal vel også bruges i findPlayFromAnchorPoint
     // udenfor decideplay? Vi bruger ikke længere decideplay decideplay koden er blevet hevet ind i findPlay. Altså er koden under kommentaren med decidePlay
-    let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight =
+    let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight (state: State.state) =
         let isIllegalPlay (x, y) =
-            usedTile (x, y) currentTiles
-            || // check current
-            usedTile (x + 1, y) currentTiles
-            || usedTile // check right
-                (x, y + 1)
-                currentTiles
+            not (state.squares (x, y))
+            || usedTile (x, y) currentTiles // check current
+            || usedTile (x + 1, y) currentTiles // check right
+            || usedTile (x, y + 1) currentTiles // check down
             || if // check down
                    isBuildingRight
                then
@@ -219,9 +219,9 @@ module Scrabble =
         then
             wordLength
         else if isBuildingRight then
-            maxLengthOfWord currentTiles (x + 1, y) (wordLength + 1) isBuildingRight // continue right
+            maxLengthOfWord currentTiles (x + 1, y) (wordLength + 1) isBuildingRight state // continue right
         else
-            maxLengthOfWord currentTiles (x, y + 1) (wordLength + 1) isBuildingRight // continue down
+            maxLengthOfWord currentTiles (x, y + 1) (wordLength + 1) isBuildingRight state // continue down
 
     let rec findPrefix (usedTiles: Map<coord, char>) ((x, y): coord) (isBuildingRight: bool) cont =
         let prefix = Map.tryFind (x, y) usedTiles
@@ -237,6 +237,7 @@ module Scrabble =
         (pieces: Map<uint32, tile>)
         (trie: Dictionary.Dict)
         (usedTiles: Map<coord, char>)
+        state
         =
         let rec aux anchorpoints acc =
             match anchorpoints with
@@ -245,8 +246,8 @@ module Scrabble =
                 acc
             // [ (false, ((0, 0), ([]))) ]
             | (coord, _) :: tail ->
-                let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true
-                let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false
+                let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true state
+                let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false state
 
                 let maxLengthOfWord =
                     if maxLengthOfWordRight > maxLengthOfWordDown then
@@ -327,9 +328,15 @@ module Scrabble =
 
                 let play =
                     if List.isEmpty st.anchorPoints then
-                        (true, findPlay st.hand pieces st.dict (-1, 0) findBestWordFolder) // This is the first play of the game, anchor point needed = hardcode (-1, 0)
+                        (true,
+                         findPlay
+                             st.hand
+                             pieces
+                             st.dict
+                             ((fst st.board.center) - 1, (snd st.board.center)) // handle off-centered boards
+                             findBestWordFolder) // This is the first play of the game, no anchor point needed
                     else
-                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
+                        findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile st // Anchor point needed
 
                 if List.isEmpty (snd (snd play)) then
                     if size st.hand > (uint32 st.tilesRemaining) then
@@ -376,7 +383,8 @@ module Scrabble =
                       remainingPlayers = st.remainingPlayers // doesn't change
                       anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // correct
                       usedTile = State.calculateNewUsedTiles st.usedTile ms
-                      tilesRemaining = st.tilesRemaining - (List.length newPieces) } // This state needs to be updated
+                      tilesRemaining = st.tilesRemaining - (List.length newPieces) 
+                      squares = st.squares } // This state needs to be updated
 
                 aux st'
             | RCM(CMPlayed(pid, ms, _)) ->
@@ -396,13 +404,14 @@ module Scrabble =
                         - (if st.tilesRemaining < List.length ms then
                                st.tilesRemaining
                            else
-                               List.length ms) }
+                               List.length ms)
+                      squares = st.squares }
 
                 aux st'
             | RCM(CMChangeSuccess newPieces) ->
                 let newHand = List.foldBack (fun (x, cnt) acc -> add x cnt acc) newPieces empty
 
-                forcePrint (
+                debugPrint (
                     sprintf
                         "Succesfully changed %A pieces\n"
                         (List.foldBack (fun (_, cnt) acc -> acc + cnt) newPieces 0u)
@@ -417,7 +426,8 @@ module Scrabble =
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile
-                      tilesRemaining = st.tilesRemaining }
+                      tilesRemaining = st.tilesRemaining 
+                      squares = st.squares }
 
                 aux st'
             | RCM(CMGameOver _) -> ()
@@ -435,7 +445,8 @@ module Scrabble =
                       remainingPlayers = remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile
-                      tilesRemaining = st.tilesRemaining }
+                      tilesRemaining = st.tilesRemaining 
+                      squares = st.squares }
 
                 aux st'
             | RCM(CMPlayFailed(pid, _))
@@ -451,7 +462,8 @@ module Scrabble =
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile
-                      tilesRemaining = st.tilesRemaining }
+                      tilesRemaining = st.tilesRemaining 
+                      squares = st.squares }
 
                 aux st'
 
@@ -471,7 +483,7 @@ module Scrabble =
                     aux st
 
                 | err ->
-                    printfn "Gameplay Error:\n%A" err
+                    debugPrint (sprintf "Gameplay Error:\n%A" err)
                     aux st
 
         aux st
@@ -505,7 +517,13 @@ module Scrabble =
         //let dict = dictf true // Uncomment if using a gaddag for your dictionary
         let dict = dictf false // Uncomment if using a trie for your dictionary
 
-        let board = Parser.mkBoard boardP
+        // let board = Parser.mkBoard boardP
+        let (board : Parser.board) = {
+            squares = fun _ -> StateMonad.Result.Success(Some Map.empty)
+            center = boardP.center
+            defaultSquare = Map.empty
+        }
+        // let (board : Parser.board) = simpleBoardLangParser.parseSimpleBoardProg boardP
 
         let handSet = List.fold (fun acc (x, k) -> MultiSet.add x k acc) MultiSet.empty hand
 
@@ -514,10 +532,11 @@ module Scrabble =
         let initPlayerList = [ 1u .. numPlayers ]
 
         let numTiles = 104u - (7u * numPlayers)
-        let temp: Parser.square = (board.defaultSquare)
+        
+        let squares = ScrabbleLib.simpleBoardLangParser.parseSimpleBoardProg boardP
 
         fun () ->
             playGame
                 cstream
                 tiles
-                (State.mkState board dict playerNumber handSet Map.empty isMyTurn initPlayerList (int numTiles))
+                (State.mkState board dict playerNumber handSet Map.empty isMyTurn initPlayerList (int numTiles) squares)
