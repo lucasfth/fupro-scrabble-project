@@ -18,6 +18,6 @@ To run it open the Ionide extension in VSCode and run the ScrabbleTemplate/Progr
 ## Extra steps completed
 
 - Multi-player and dictionary (yes)
-- Playing on all boards (no)
+- Playing on all boards (yes)
 - Parallelism (no)
 - Respect the timeout flag (no)
