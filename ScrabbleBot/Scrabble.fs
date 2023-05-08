@@ -48,9 +48,10 @@ module State =
           myTurn: bool
           remainingPlayers: uint32 list
           anchorPoints: (coord * char) list
-          usedTile: Map<coord, char> }
+          usedTile: Map<coord, char>
+          tilesRemaining: int }
 
-    let mkState b d pn h map isMyTurn initPlayerList =
+    let mkState b d pn h map isMyTurn initPlayerList k =
         { board = b
           dict = d
           playerNumber = pn
@@ -58,7 +59,8 @@ module State =
           myTurn = isMyTurn
           remainingPlayers = initPlayerList
           anchorPoints = []
-          usedTile = map }
+          usedTile = map
+          tilesRemaining = k }
 
     let calculateNewAnchorPoints oldAnchorPoints moves =
         List.fold (fun acc (coord, (_, (char, _))) -> (coord, char) :: acc) oldAnchorPoints moves
@@ -79,7 +81,6 @@ module State =
 
 module Scrabble =
     open MultiSet
-    open System.Collections.Generic
 
     let shouldPlay pid remainingplayers ownplayernumber =
         // Find index of pid
@@ -104,7 +105,7 @@ module Scrabble =
         | Some _ -> true
         | None -> false
 
-    let findPlayCoords usedTilesMap (isBuildingRight, ((initialX, initialY), letters)) =
+    let findPlayCoords _ (isBuildingRight, ((initialX, initialY), letters)) =
         let rec aux (shouldGoRight: bool) x y (remainingLetters) acc =
             if List.isEmpty remainingLetters then
                 acc
@@ -146,7 +147,7 @@ module Scrabble =
 
                 // This iterates over tiles in our hand
                 fold
-                    (fun subContinuation nextTileId countOfThisLetter ->
+                    (fun subContinuation nextTileId _ ->
                         // For each tile left in our hand: (can be wildcards)
                         let (nextTile: tile) = Map.find nextTileId pieces
 
@@ -171,12 +172,8 @@ module Scrabble =
                                             subSubContinuation
 
                                     // Union the result of the recursive call (subnode) with the current node
-                                    MultiSet.union
-                                        (aux
-                                            (MultiSet.removeSingle nextTileId currHand)
-                                            subTrie
-                                            currWord
-                                            newContinuation)
+                                    union
+                                        (aux (removeSingle nextTileId currHand) subTrie currWord newContinuation)
                                         subSubContinuation
                                 | None -> subSubContinuation)
                             subContinuation // TODO This needs to change
@@ -187,7 +184,7 @@ module Scrabble =
         let possibleWords = aux hand trie [] empty
 
         // AKA decidePlay ⬇️
-        (coord, snd (MultiSet.foldBack folder possibleWords (0, [])))
+        (coord, snd (foldBack folder possibleWords (0, [])))
 
     // bestPlayFolder erstatter longestWordFolder som vi giver med i findplay funktionen
     //Men der den korrekt? ved ikke om det jeg har skrevet giver mening
@@ -241,13 +238,13 @@ module Scrabble =
         (trie: Dictionary.Dict)
         (usedTiles: Map<coord, char>)
         =
-        let rec aux anchorpoints (acc: (bool * ((int * int) * (uint32 * (char * int)) list)) list) =
+        let rec aux anchorpoints acc =
             match anchorpoints with
             | [] ->
                 // There was not found any legal plays. This will cause our Bot to request changing tiles.
                 acc
             // [ (false, ((0, 0), ([]))) ]
-            | (coord, char) :: tail ->
+            | (coord, _) :: tail ->
                 let maxLengthOfWordRight = maxLengthOfWord usedTiles coord 0 true
                 let maxLengthOfWordDown = maxLengthOfWord usedTiles coord 0 false
 
@@ -285,7 +282,7 @@ module Scrabble =
                         prefix.Tail
 
                 match initialTrie with
-                | Some(isWord, trie) ->
+                | Some(_, trie) ->
                     let play = findPlay hand pieces trie coord folder
                     let shouldPlayRight = fst maxLengthOfWord
 
@@ -302,7 +299,7 @@ module Scrabble =
             (fun el (currentBestValue, currentBestWord) ->
 
                 let pointValueFromElement =
-                    List.fold (fun totalpointvalue (id, (char, pv)) -> totalpointvalue + pv) 0 (snd (snd el))
+                    List.fold (fun totalpointvalue (_, (_, pv)) -> totalpointvalue + pv) 0 (snd (snd el))
 
                 if pointValueFromElement > currentBestValue then
                     (pointValueFromElement, el)
@@ -312,25 +309,16 @@ module Scrabble =
         snd (List.foldBack ourFolder bestPlayFromEachAnchorpoint (0, (false, ((0, 0), ([])))))
 
     let playGame cstream pieces (st: State.state) =
-
         let rec aux (st: State.state) =
 
             // Check if it is our turn
             if st.myTurn then
                 // some logic that figures out the next play
 
-
-                let findLongestWordFolder =
-                    (fun (element) _ currentBestWord ->
-                        if (List.length element) > (List.length currentBestWord) then
-                            element
-                        else
-                            currentBestWord)
-
                 let findBestWordFolder =
                     (fun (el) _ (currentbestvalue, currentBestWord) ->
                         let pointvaluefromelement =
-                            List.fold (fun totalpointvalue (id, (char, pv)) -> totalpointvalue + pv) 0 el
+                            List.fold (fun totalpointvalue (_, (_, pv)) -> totalpointvalue + pv) 0 el
 
                         if pointvaluefromelement > currentbestvalue then
                             (pointvaluefromelement, el)
@@ -343,8 +331,22 @@ module Scrabble =
                     else
                         findPlayFromAnchorPoint st.anchorPoints st.hand pieces st.dict st.usedTile // Anchor point needed
 
-                if List.isEmpty (snd (snd play)) then
-                    send cstream (SMChange(MultiSet.toList st.hand)) // Change whole hand
+                if List.isEmpty (snd (snd play)) || st.playerNumber = 1u then
+                    if size st.hand > (uint32 st.tilesRemaining) then
+                        let rec aux lst =
+                            match lst with
+                            | lst when List.length lst <= st.tilesRemaining -> lst
+                            | _ :: tail -> aux tail
+                            | [] -> []
+
+                        let changeList = aux (toList st.hand)
+
+                        if List.length changeList = 0 then
+                            send cstream (SMPass)
+                        else
+                            send cstream (SMChange(aux (toList st.hand)))
+                    else
+                        send cstream (SMChange(toList st.hand)) // Change whole hand
                 else
                     let playWithCoords = findPlayCoords st.usedTile play
                     send cstream (SMPlay playWithCoords)
@@ -356,14 +358,14 @@ module Scrabble =
                 (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
                 // Hand:
                 let usedIds =
-                    List.foldBack (fun (_, (tileId, _)) acc -> MultiSet.addSingle tileId acc) ms MultiSet.empty
+                    List.foldBack (fun (_, (tileId, _)) acc -> addSingle tileId acc) ms empty
 
                 // Remove the last played pieces from current hand state
-                let handWithoutUsedPieces = MultiSet.subtract st.hand usedIds
+                let handWithoutUsedPieces = subtract st.hand usedIds
 
                 let newHand =
-                    List.fold (fun acc (_, (char, _)) -> MultiSet.removeSingle char acc) st.hand ms
-                    |> List.foldBack (fun (x, cnt) acc -> MultiSet.add x cnt acc) newPieces
+                    List.fold (fun acc (_, (char, _)) -> removeSingle char acc) st.hand ms
+                    |> List.foldBack (fun (x, cnt) acc -> add x cnt acc) newPieces
 
                 let st': State.state =
                     { playerNumber = st.playerNumber // doesn't change
@@ -373,10 +375,11 @@ module Scrabble =
                       myTurn = shouldPlay st.playerNumber st.remainingPlayers st.playerNumber
                       remainingPlayers = st.remainingPlayers // doesn't change
                       anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // correct
-                      usedTile = State.calculateNewUsedTiles st.usedTile ms } // This state needs to be updated
+                      usedTile = State.calculateNewUsedTiles st.usedTile ms
+                      tilesRemaining = st.tilesRemaining - (List.length newPieces) } // This state needs to be updated
 
                 aux st'
-            | RCM(CMPlayed(pid, ms, points)) ->
+            | RCM(CMPlayed(pid, ms, _)) ->
                 (* Successful play by other player. Update your state *)
 
                 let st': State.state =
@@ -388,12 +391,22 @@ module Scrabble =
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // Update this with new play
                       usedTile = State.calculateNewUsedTiles st.usedTile ms // Do update
-                    }
+                      tilesRemaining =
+                        st.tilesRemaining
+                        - (if st.tilesRemaining < List.length ms then
+                               st.tilesRemaining
+                           else
+                               List.length ms) }
 
                 aux st'
             | RCM(CMChangeSuccess newPieces) ->
-                let newHand =
-                    List.foldBack (fun (x, cnt) acc -> MultiSet.add x cnt acc) newPieces MultiSet.empty
+                let newHand = List.foldBack (fun (x, cnt) acc -> add x cnt acc) newPieces empty
+
+                forcePrint (
+                    sprintf
+                        "Succesfully changed %A pieces\n"
+                        (List.foldBack (fun (_, cnt) acc -> acc + cnt) newPieces 0u)
+                )
                 // Assume whole hand is changed
                 let st': State.state =
                     { playerNumber = st.playerNumber
@@ -403,7 +416,8 @@ module Scrabble =
                       myTurn = shouldPlay st.playerNumber st.remainingPlayers st.playerNumber
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
-                      usedTile = st.usedTile }
+                      usedTile = st.usedTile
+                      tilesRemaining = st.tilesRemaining }
 
                 aux st'
             | RCM(CMGameOver _) -> ()
@@ -420,7 +434,8 @@ module Scrabble =
                       myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
                       remainingPlayers = remainingPlayers
                       anchorPoints = st.anchorPoints
-                      usedTile = st.usedTile }
+                      usedTile = st.usedTile
+                      tilesRemaining = st.tilesRemaining }
 
                 aux st'
             | RCM(CMPlayFailed(pid, _))
@@ -435,7 +450,8 @@ module Scrabble =
                       myTurn = shouldPlay pid st.remainingPlayers st.playerNumber
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
-                      usedTile = st.usedTile }
+                      usedTile = st.usedTile
+                      tilesRemaining = st.tilesRemaining }
 
                 aux st'
 
@@ -449,13 +465,11 @@ module Scrabble =
                 )
             | RGPE err ->
                 match List.head err with
-                | GPENotEnoughPieces(_, piecesLeft) ->
+                | GPENotEnoughPieces(_, _) ->
                     debugPrint "\n\nPrinting remaining hand:\n"
                     Print.printHand pieces st.hand
+                    aux st
 
-                    send cstream SMPass
-                    send cstream SMPass
-                    send cstream SMPass
                 | err ->
                     printfn "Gameplay Error:\n%A" err
                     aux st
@@ -499,5 +513,11 @@ module Scrabble =
 
         let initPlayerList = [ 1u .. numPlayers ]
 
+        let numTiles = 104u - (7u * numPlayers)
+        let temp: Parser.square = (board.defaultSquare)
+
         fun () ->
-            playGame cstream tiles (State.mkState board dict playerNumber handSet Map.empty isMyTurn initPlayerList)
+            playGame
+                cstream
+                tiles
+                (State.mkState board dict playerNumber handSet Map.empty isMyTurn initPlayerList (int numTiles))
