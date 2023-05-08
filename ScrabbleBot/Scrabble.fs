@@ -49,9 +49,10 @@ module State =
           remainingPlayers: uint32 list
           anchorPoints: (coord * char) list
           usedTile: Map<coord, char>
-          tilesRemaining: int }
+          tilesRemaining: int 
+          squares: (coord -> bool) }
 
-    let mkState b d pn h map isMyTurn initPlayerList k =
+    let mkState b d pn h map isMyTurn initPlayerList k squares =
         { board = b
           dict = d
           playerNumber = pn
@@ -60,7 +61,8 @@ module State =
           remainingPlayers = initPlayerList
           anchorPoints = []
           usedTile = map
-          tilesRemaining = k }
+          tilesRemaining = k 
+          squares = squares }
 
     let calculateNewAnchorPoints oldAnchorPoints moves =
         List.fold (fun acc (coord, (_, (char, _))) -> (coord, char) :: acc) oldAnchorPoints moves
@@ -194,13 +196,8 @@ module Scrabble =
     // udenfor decideplay? Vi bruger ikke længere decideplay decideplay koden er blevet hevet ind i findPlay. Altså er koden under kommentaren med decidePlay
     let rec maxLengthOfWord currentTiles (x, y) wordLength isBuildingRight (state: State.state) =
         let isIllegalPlay (x, y) =
-            let temp =
-                match state.board.squares (x, y) with
-                | StateMonad.Result.Success(Some v) -> false
-                | StateMonad.Result.Success(None) -> true
-                | StateMonad.Result.Failure(err) -> true
-
-            usedTile (x, y) currentTiles // check current
+            not (state.squares (x, y))
+            || usedTile (x, y) currentTiles // check current
             || usedTile (x + 1, y) currentTiles // check right
             || usedTile (x, y + 1) currentTiles // check down
             || if // check down
@@ -315,9 +312,6 @@ module Scrabble =
     let playGame cstream pieces (st: State.state) =
         let rec aux (st: State.state) =
 
-            let temp = st.board.squares (15, 15)
-            forcePrint (sprintf "Test: %A\n" temp)
-
             // Check if it is our turn
             if st.myTurn then
                 // some logic that figures out the next play
@@ -389,7 +383,8 @@ module Scrabble =
                       remainingPlayers = st.remainingPlayers // doesn't change
                       anchorPoints = State.calculateNewAnchorPoints st.anchorPoints ms // correct
                       usedTile = State.calculateNewUsedTiles st.usedTile ms
-                      tilesRemaining = st.tilesRemaining - (List.length newPieces) } // This state needs to be updated
+                      tilesRemaining = st.tilesRemaining - (List.length newPieces) 
+                      squares = st.squares } // This state needs to be updated
 
                 aux st'
             | RCM(CMPlayed(pid, ms, _)) ->
@@ -409,13 +404,14 @@ module Scrabble =
                         - (if st.tilesRemaining < List.length ms then
                                st.tilesRemaining
                            else
-                               List.length ms) }
+                               List.length ms)
+                      squares = st.squares }
 
                 aux st'
             | RCM(CMChangeSuccess newPieces) ->
                 let newHand = List.foldBack (fun (x, cnt) acc -> add x cnt acc) newPieces empty
 
-                forcePrint (
+                debugPrint (
                     sprintf
                         "Succesfully changed %A pieces\n"
                         (List.foldBack (fun (_, cnt) acc -> acc + cnt) newPieces 0u)
@@ -430,7 +426,8 @@ module Scrabble =
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile
-                      tilesRemaining = st.tilesRemaining }
+                      tilesRemaining = st.tilesRemaining 
+                      squares = st.squares }
 
                 aux st'
             | RCM(CMGameOver _) -> ()
@@ -448,7 +445,8 @@ module Scrabble =
                       remainingPlayers = remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile
-                      tilesRemaining = st.tilesRemaining }
+                      tilesRemaining = st.tilesRemaining 
+                      squares = st.squares }
 
                 aux st'
             | RCM(CMPlayFailed(pid, _))
@@ -464,7 +462,8 @@ module Scrabble =
                       remainingPlayers = st.remainingPlayers
                       anchorPoints = st.anchorPoints
                       usedTile = st.usedTile
-                      tilesRemaining = st.tilesRemaining }
+                      tilesRemaining = st.tilesRemaining 
+                      squares = st.squares }
 
                 aux st'
 
@@ -484,7 +483,7 @@ module Scrabble =
                     aux st
 
                 | err ->
-                    printfn "Gameplay Error:\n%A" err
+                    debugPrint (sprintf "Gameplay Error:\n%A" err)
                     aux st
 
         aux st
@@ -518,7 +517,13 @@ module Scrabble =
         //let dict = dictf true // Uncomment if using a gaddag for your dictionary
         let dict = dictf false // Uncomment if using a trie for your dictionary
 
-        let board = Parser.mkBoard boardP
+        // let board = Parser.mkBoard boardP
+        let (board : Parser.board) = {
+            squares = fun _ -> StateMonad.Result.Success(Some Map.empty)
+            center = boardP.center
+            defaultSquare = Map.empty
+        }
+        // let (board : Parser.board) = simpleBoardLangParser.parseSimpleBoardProg boardP
 
         let handSet = List.fold (fun acc (x, k) -> MultiSet.add x k acc) MultiSet.empty hand
 
@@ -527,10 +532,11 @@ module Scrabble =
         let initPlayerList = [ 1u .. numPlayers ]
 
         let numTiles = 104u - (7u * numPlayers)
-        let temp = ScrabbleLib.parseSimpleBoardProg
+        
+        let squares = ScrabbleLib.simpleBoardLangParser.parseSimpleBoardProg boardP
 
         fun () ->
             playGame
                 cstream
                 tiles
-                (State.mkState board dict playerNumber handSet Map.empty isMyTurn initPlayerList (int numTiles))
+                (State.mkState board dict playerNumber handSet Map.empty isMyTurn initPlayerList (int numTiles) squares)
