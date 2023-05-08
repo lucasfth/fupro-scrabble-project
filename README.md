@@ -5,8 +5,19 @@ This repository is created as part of the course Functional Programming, which w
 ## Made by
 
 Group: QWERTY Quitters \
-Group members: Felix Fatum (fefa), Andreas Guldborg (aguh), and Lucas Hanson (luha)
+Group members:
+
+- Felix Fatum (fefa)
+- Andreas Guldborg (aguh)
+- Lucas Hanson (luha)
 
 ## How to run
 
 To run it open the Ionide extension in VSCode and run the ScrabbleTemplate/Program.fs file.
+
+## Extra steps completed
+
+- Multi-player and dictionary (yes)
+- Playing on all boards (no)
+- Parallelism (no)
+- Respect the timeout flag (no)
